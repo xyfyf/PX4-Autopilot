@@ -1,0 +1,17 @@
+#!/bin/sh
+#
+# board specific sensors init (EFT_CAAC, ported from ArduPilot hwdef)
+#------------------------------------------------------------------------------
+
+board_adc start
+
+# Internal SPI1: BMI088 accel/gyro
+bmi088 -A -s -b 1 start
+bmi088 -G -s -b 1 start
+
+# Internal SPI2: ICM42688P
+icm42688p -s -b 2 start
+
+# Internal I2C1: SPL06 barometer, QMC5883P compass (mounted ROLL_180)
+spl06 -I -a 0x77 start
+qmc5883p -I -R 8 start
