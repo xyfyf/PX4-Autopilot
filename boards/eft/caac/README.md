@@ -31,8 +31,9 @@ the ArduPilot `PWM(n)` numbering. See the table in `src/timer_config.cpp`.
 | 5 | PB3 | 10 | 11 | PD15 | 11 |
 | 6 | PB10 | 3 | 12 | PB11 | 2 |
 
-(The ArduPilot hwdef boots PWM1-6 at 1000 us immediately; the PX4 equivalent
-for the motor outputs still has to be set up.)
+PWM pins are pulled down at boot (as in the ArduPilot hwdef). The ArduPilot hwdef
+additionally drives PWM1-6 at 1000 us/400 Hz right after timer start; PX4 has no
+equivalent yet, so check ESC behaviour at power-up on the bench.
 
 ## Bench bring-up checklist
 

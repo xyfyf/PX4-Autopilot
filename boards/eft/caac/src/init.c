@@ -97,7 +97,10 @@ __EXPORT void board_peripheral_reset(int ms)
 __EXPORT void board_on_reset(int status)
 {
 	for (int i = 0; i < DIRECT_PWM_OUTPUT_CHANNELS; ++i) {
-		px4_arch_configgpio(PX4_MAKE_GPIO_INPUT(io_timer_channel_get_as_pwm_input(i)));
+		/* Pull down, as in the ArduPilot hwdef (PULLDOWN until PWM drives the pin),
+		 * so a floating or pulled-up signal never looks like a throttle command to the ESC. */
+		px4_arch_configgpio((io_timer_channel_get_as_pwm_input(i) & (GPIO_PORT_MASK | GPIO_PIN_MASK)) |
+				    (GPIO_INPUT | GPIO_PULLDOWN));
 	}
 
 	/*
