@@ -64,6 +64,7 @@ set yet. CSB1 as accel and CSB2 as gyro follows the BMI088 datasheet; confirm ag
 - No battery measurement and no I2C on the schematic, so `board_adc`, `battery_status` and I2C
   are not built. Arming needs `CBRK_SUPPLY_CHK` = 894281, which disables all power checks: set it
   in the test parameter file for bench and close-range tests only. It is deliberately not a default.
+- There is no FRAM, so parameters live on the SD NAND (`/fs/microsd/params`).
 - LED anodes go to +5V through 430R, so the colours are active low. Confirm the LEDs turn fully
   off with the pin at 3.3V.
 
