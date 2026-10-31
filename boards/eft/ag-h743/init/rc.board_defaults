@@ -2,13 +2,11 @@
 #
 # board specific defaults
 #------------------------------------------------------------------------------
-# UM482 is a Unicore receiver: NMEA protocol, never auto-detected
+# UM982 is a Unicore receiver: NMEA protocol, never auto-detected
 param set-default GPS_1_PROTOCOL 6
 
 # SBUS only (UART8 has no TX line)
 param set-default RC_INPUT_PROTO 2
 
-# No magnetometer on the schematic: heading comes from the UM482 dual antenna
-param set-default SYS_HAS_MAG 0
-param set-default EKF2_MAG_TYPE 5
+# Fuse the UM982 dual antenna heading in addition to the compass
 param set-default EKF2_GPS_CTRL 15

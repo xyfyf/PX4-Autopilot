@@ -65,6 +65,33 @@
 #  define BOARD_OVERLOAD_LED     LED_RED
 #  define BOARD_ARMED_STATE_LED  LED_BLUE
 
+/* Battery: voltage on PC5, current on PC4. Divider values come from the hardware design. */
+#define SYSTEM_ADC_BASE STM32_ADC1_BASE
+#define ADC1_CH(n)                   (n)
+#define PX4_ADC_GPIO  \
+	/* PC4 */ GPIO_ADC12_INP4, \
+	/* PC5 */ GPIO_ADC12_INP8
+#define ADC_BATTERY_VOLTAGE_CHANNEL  ADC1_CH(8)
+#define ADC_BATTERY_CURRENT_CHANNEL  ADC1_CH(4)
+#define ADC_CHANNELS \
+	((1 << ADC_BATTERY_VOLTAGE_CHANNEL) | \
+	 (1 << ADC_BATTERY_CURRENT_CHANNEL))
+#define BOARD_ADC_OPEN_CIRCUIT_V     (5.6f)
+
+/* Buzzer */
+#define TONE_ALARM_TIMER        3
+#define TONE_ALARM_CHANNEL      3
+#define GPIO_TONE_ALARM_IDLE    /* PB0 */ (GPIO_OUTPUT|GPIO_PUSHPULL|GPIO_SPEED_2MHz|GPIO_OUTPUT_CLEAR|GPIO_PORTB|GPIO_PIN0)
+#define GPIO_TONE_ALARM         GPIO_TIM3_CH3OUT_1
+
+/* CAN transceivers are in silent mode (S pin pulled high) until these go low */
+#define GPIO_CAN1_SILENT_S0     /* PA10 */ (GPIO_OUTPUT|GPIO_PUSHPULL|GPIO_SPEED_2MHz|GPIO_OUTPUT_CLEAR|GPIO_PORTA|GPIO_PIN10)
+#define GPIO_CAN2_SILENT_S0     /* PD8  */ (GPIO_OUTPUT|GPIO_PUSHPULL|GPIO_SPEED_2MHz|GPIO_OUTPUT_CLEAR|GPIO_PORTD|GPIO_PIN8)
+
+/* USB OTG FS: PA9 senses VBUS */
+#define GPIO_OTGFS_VBUS         /* PA9 */ (GPIO_INPUT|GPIO_PULLDOWN|GPIO_SPEED_100MHz|GPIO_PORTA|GPIO_PIN9)
+#define BOARD_ADC_USB_CONNECTED (px4_arch_gpioread(GPIO_OTGFS_VBUS))
+
 /* PWM
  *
  * All 8 outputs go through a SN74LVC8T245. Its OE# (PE10, 4.7k pull-up) is active low:
@@ -73,12 +100,12 @@
 #define DIRECT_PWM_OUTPUT_CHANNELS   8
 #define GPIO_PWM_OE_N           /* PE10 */ (GPIO_OUTPUT|GPIO_PUSHPULL|GPIO_SPEED_2MHz|GPIO_OUTPUT_SET|GPIO_PORTE|GPIO_PIN10)
 
-/* High-resolution timer: TIM4 and TIM5 drive the outputs */
-#define HRT_TIMER               3
+/* High-resolution timer: TIM4 and TIM5 drive the outputs, TIM3 the buzzer */
+#define HRT_TIMER               8
 #define HRT_TIMER_CHANNEL       3
 
 /* RC Serial port: SBUS is inverted by a 74LVC2G240 before it reaches UART8 */
-#define RC_SERIAL_PORT                     "/dev/ttyS4"
+#define RC_SERIAL_PORT                     "/dev/ttyS5"
 #define RC_INVERT_INPUT(_invert_true)      do { (void)(_invert_true); } while (0)
 
 /* SD card bringup does not work if performed on the IDLE thread because it
@@ -101,7 +128,11 @@
 #define BOARD_HAS_ON_RESET 1
 
 #define PX4_GPIO_INIT_LIST { \
+		PX4_ADC_GPIO, \
 		GPIO_PWM_OE_N, \
+		GPIO_TONE_ALARM_IDLE, \
+		GPIO_CAN1_SILENT_S0, \
+		GPIO_CAN2_SILENT_S0, \
 	}
 
 #define BOARD_ENABLE_CONSOLE_BUFFER
@@ -144,6 +175,8 @@ int stm32_sdio_initialize(void);
  ****************************************************************************************************/
 
 extern void stm32_spiinitialize(void);
+
+extern void stm32_usbinitialize(void);
 
 extern void board_peripheral_reset(int ms);
 

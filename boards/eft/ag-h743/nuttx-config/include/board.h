@@ -353,35 +353,50 @@
 
 /* Alternate function pin selections ************************************************/
 
-#define GPIO_USART1_RX   GPIO_USART1_RX_1      /* PB15 UM482 */
+#define GPIO_USART1_RX   GPIO_USART1_RX_1      /* PB15 GNSS */
 #define GPIO_USART1_TX   GPIO_USART1_TX_1      /* PB14 */
 
 #define GPIO_USART2_RX   GPIO_USART2_RX_2      /* PD6  PMU, not used yet */
 #define GPIO_USART2_TX   GPIO_USART2_TX_2      /* PD5  */
 
-#define GPIO_USART3_RX   GPIO_USART3_RX_1      /* PB11 FMU telemetry */
+#define GPIO_USART3_RX   GPIO_USART3_RX_1      /* PB11 telemetry */
 #define GPIO_USART3_TX   GPIO_USART3_TX_1      /* PB10 */
 
-#define GPIO_UART7_RX    GPIO_UART7_RX_3       /* PE7  REC, used as console */
+#define GPIO_USART6_RX   GPIO_USART6_RX_1      /* PC7  debug console */
+#define GPIO_USART6_TX   GPIO_USART6_TX_1      /* PC6  */
+
+#define GPIO_UART7_RX    GPIO_UART7_RX_3       /* PE7  spare, TEL2 */
 #define GPIO_UART7_TX    GPIO_UART7_TX_3       /* PE8  */
 
 #define GPIO_UART8_RX    GPIO_UART8_RX_1       /* PE0  SBUS, inverted in hardware */
 #define GPIO_UART8_TX    GPIO_UART8_TX_1       /* PE1  not connected */
 
 /* CAN (FDCAN) */
-#define GPIO_CAN1_RX     GPIO_CAN1_RX_1        /* PA11 FDCAN1, schematic net CAN2_RX (Motor_CAN) */
-#define GPIO_CAN1_TX     GPIO_CAN1_TX_1        /* PA12 FDCAN1, schematic net CAN2_TX */
-#define GPIO_CAN2_RX     GPIO_CAN2_RX_1        /* PB12 FDCAN2, schematic net CAN1_RX (GNSS_CAN) */
-#define GPIO_CAN2_TX     GPIO_CAN2_TX_1        /* PB13 FDCAN2, schematic net CAN1_TX */
+#define GPIO_CAN1_RX     GPIO_CAN1_RX_3        /* PD0  FDCAN1, Motor_CAN */
+#define GPIO_CAN1_TX     GPIO_CAN1_TX_3        /* PD1  */
+#define GPIO_CAN2_RX     GPIO_CAN2_RX_1        /* PB12 FDCAN2, GNSS_CAN */
+#define GPIO_CAN2_TX     GPIO_CAN2_TX_1        /* PB13 */
 
 /* SPI
- *   SPI2: BMI088 accel (CS PC0) / gyro (CS PA8), SPL06 (CS PB4)
+ *   SPI1: BMI088 accel (CS PC0, DRDY PE2) / gyro (CS PA8, DRDY PE3)
+ *   SPI2: BMI270 (CS PD4, DRDY PD7), SPL06 (CS PB4)
  */
 #define ADJ_SLEW_RATE(p) (((p) & ~GPIO_SPEED_MASK) | (GPIO_SPEED_2MHz))
 
+#define GPIO_SPI1_MISO   GPIO_SPI1_MISO_1               /* PA6  */
+#define GPIO_SPI1_MOSI   GPIO_SPI1_MOSI_1               /* PA7  */
+#define GPIO_SPI1_SCK    ADJ_SLEW_RATE(GPIO_SPI1_SCK_1) /* PA5  */
+
 #define GPIO_SPI2_MISO   GPIO_SPI2_MISO_2               /* PC2  */
 #define GPIO_SPI2_MOSI   GPIO_SPI2_MOSI_2               /* PC1  */
-#define GPIO_SPI2_SCK    ADJ_SLEW_RATE(GPIO_SPI2_SCK_2) /* PA9  */
+#define GPIO_SPI2_SCK    ADJ_SLEW_RATE(GPIO_SPI2_SCK_5) /* PD3  */
+
+/* I2C1 (external): compass */
+#define GPIO_I2C1_SCL GPIO_I2C1_SCL_2       /* PB8 */
+#define GPIO_I2C1_SDA GPIO_I2C1_SDA_1       /* PB7 */
+
+#define GPIO_I2C1_SCL_GPIO                  (GPIO_OUTPUT | GPIO_OPENDRAIN |GPIO_SPEED_50MHz | GPIO_OUTPUT_SET | GPIO_PORTB | GPIO_PIN8)
+#define GPIO_I2C1_SDA_GPIO                  (GPIO_OUTPUT | GPIO_OPENDRAIN |GPIO_SPEED_50MHz | GPIO_OUTPUT_SET | GPIO_PORTB | GPIO_PIN7)
 
 /* SDMMC1
  *

@@ -139,6 +139,9 @@ __EXPORT void stm32_boardinitialize(void)
 	/* configure SPI interfaces */
 	stm32_spiinitialize();
 
+	/* configure USB interfaces */
+	stm32_usbinitialize();
+
 }
 
 /****************************************************************************
