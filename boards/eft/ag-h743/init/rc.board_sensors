@@ -1,0 +1,9 @@
+#!/bin/sh
+# board specific sensors init
+#------------------------------------------------------------------------------
+
+# Internal SPI2: BMI088 accel/gyro (INT pins not connected, so no data ready interrupt),
+# SPL06 barometer. Add -R once the mounting orientation is known.
+bmi088 -A -s -b 2 start
+bmi088 -G -s -b 2 start
+spl06 -s -b 2 start
