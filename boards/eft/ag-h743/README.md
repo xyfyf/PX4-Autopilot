@@ -50,7 +50,7 @@ are high impedance from reset until the end of `board_app_initialize()`, and aga
 | BMI088 gyro | SPI1 | PA8 | PE3 | `bmi088 -G -s -b 1 start` |
 | BMI270 | SPI2 (PD3, PC2, PC1) | PD4 | PD7 | `bmi270 -s -b 2 start` |
 | SPL06 | SPI2 | PB4 | - | `spl06 -s -b 2 start` |
-| QMC5883L | I2C1 external (PB8, PB7) | - | - | `qmc5883l -X -a 0x0D start` |
+| QMC5883L | I2C1 external (PB8, PB7) | - | - probed by `rc.sensors` |
 
 Rotation (`-R`) is not set yet; it depends on the PCB and the mounting.
 

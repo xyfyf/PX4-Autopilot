@@ -12,5 +12,4 @@ bmi088 -G -s -b 1 start
 bmi270 -s -b 2 start
 spl06 -s -b 2 start
 
-# External I2C1: compass in the GNSS module
-qmc5883l -X -a 0x0D start
+# The external compass on I2C1 is found by the probe in rc.sensors (SENS_EXT_I2C_PRB)
