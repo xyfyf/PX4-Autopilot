@@ -2,14 +2,8 @@
 # board specific sensors init
 #------------------------------------------------------------------------------
 
-board_adc start
-
-# Internal SPI1: BMI088. Add -R once the mounting orientation is known.
-bmi088 -A -s -b 1 start
-bmi088 -G -s -b 1 start
-
-# Internal SPI2: BMI270, SPL06
-bmi270 -s -b 2 start
+# Internal SPI2: BMI088 accel/gyro (INT pins not connected, so no data ready interrupt),
+# SPL06 barometer. Add -R once the mounting orientation is known.
+bmi088 -A -s -b 2 start
+bmi088 -G -s -b 2 start
 spl06 -s -b 2 start
-
-# The external compass on I2C1 is found by the probe in rc.sensors (SENS_EXT_I2C_PRB)

@@ -51,6 +51,7 @@
 #include <nuttx/mmcsd.h>
 #include <arch/board/board.h>
 #include "arm_internal.h"
+#include "hardware/stm32_syscfg.h"
 
 #include <drivers/drv_hrt.h>
 #include <drivers/drv_board_led.h>
@@ -61,10 +62,6 @@
 #include <px4_platform/board_dma_alloc.h>
 
 #include <mpu.h>
-
-# if defined(FLASH_BASED_PARAMS)
-#  include <parameters/flashparams/flashfs.h>
-#endif
 
 __BEGIN_DECLS
 extern void led_init(void);
@@ -136,11 +133,14 @@ __EXPORT void stm32_boardinitialize(void)
 	const uint32_t gpio[] = PX4_GPIO_INIT_LIST;
 	px4_gpio_init(gpio, arraySize(gpio));
 
+	/*
+	 * BMI_SDO is on PC2_C. This package has no separate PC2 pad, and SPI2_MISO only
+	 * reaches PC2_C through the analog switch, so close it rather than rely on its reset state.
+	 */
+	modifyreg32(STM32_SYSCFG_PMC, SYSCFG_PMC_PC2SO, 0);
+
 	/* configure SPI interfaces */
 	stm32_spiinitialize();
-
-	/* configure USB interfaces */
-	stm32_usbinitialize();
 
 }
 
@@ -187,23 +187,6 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 	if (ret != OK) {
 		led_on(LED_BLUE);
 		return ret;
-	}
-
-#endif
-
-// TODO：internal flash store parameters
-#if defined(FLASH_BASED_PARAMS)
-	static sector_descriptor_t params_sector_map[] = {
-		{15, 128 * 1024, 0x081E0000},
-		{0, 0, 0},
-	};
-
-	/* Initialize the flashfs layer to use heap allocated memory */
-	int result = parameter_flashfs_init(params_sector_map, NULL, 0);
-
-	if (result != OK) {
-		syslog(LOG_ERR, "[boot] FAILED to init params in FLASH %d\n", result);
-		led_on(LED_RED);
 	}
 
 #endif
