@@ -2,14 +2,14 @@
 #
 # board specific defaults
 #------------------------------------------------------------------------------
-# The schematic names a UM482 (Unicore): NMEA protocol, never auto-detected.
-# The driver's heading path was written for the UM982, so test it on this receiver.
+# The schematic net says UM482, but hardware confirmed a Unicore UM982 (RTK).
+# It speaks NMEA, which is never auto-detected.
 param set-default GPS_1_PROTOCOL 6
 
 # SBUS only (UART8 has no TX line)
 param set-default RC_INPUT_PROTO 2
 
-# No magnetometer on the schematic: heading comes from the UM482 dual antenna
+# No magnetometer on the schematic: heading comes from the UM982 dual antenna
 param set-default SYS_HAS_MAG 0
 param set-default EKF2_MAG_TYPE 5
 param set-default EKF2_GPS_CTRL 15

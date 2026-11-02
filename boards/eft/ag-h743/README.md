@@ -26,14 +26,15 @@ reuse PA13/PA14 in firmware.
 
 | NuttX | MCU | TX/RX | FMU1 pins (TX/RX) | Schematic | PX4 role |
 |---|---|---|---|---|---|
-| ttyS0 | USART1 | PB14/PB15 | 10/8 | UM482 | GPS1 |
+| ttyS0 | USART1 | PB14/PB15 | 10/8 | UM482 (a UM982) | GPS1 |
 | ttyS1 | USART2 | PD5/PD6 | 22/20 | PMU | none yet |
 | ttyS2 | USART3 | PB10/PB11 | 16/14 | FMU | TEL1 |
 | ttyS3 | UART7 | PE8/PE7 | 13/15 | REC | console, 57600 |
 | ttyS4 | UART8 | -/PE0 | -/21 | SBUS | RC |
 
 The nets `UM482_*` and `PMU_*` are named from the far end (`UM482_TX` goes to the MCU RX).
-USART2 stays enabled so the numbering does not move when the PMU is added.
+Hardware says the receiver on that net is a UM982 (RTK). USART2 stays enabled so the numbering
+does not move when the PMU is added.
 Using REC as the console is a bring-up choice: there is no dedicated debug port, and FMU1 is the
 only way out, so the console needs whatever board FMU1 plugs into. What REC connects to is not
 known yet; move the console if it is in use.
@@ -61,7 +62,8 @@ ESCs behave on a floating line. DIR is tied high, so bidirectional DShot cannot 
 | SPL06 | SPI2 | PB4 | `spl06 -s -b 2 start` |
 
 The BMI088 INT pins are not connected, so the driver reads on a timer. Rotation (`-R`) is not
-set: it needs the PCB layout and the mounting direction.
+set. Hardware says the board is mounted vertically, perpendicular to the ground; which edge faces
+the nose and which faces up is still open, and can be measured on the board if no layout arrives.
 
 ## Hardware-specific behaviour
 
@@ -74,8 +76,8 @@ set: it needs the PCB layout and the mounting direction.
   invert the UART again while scanning for SBUS.
 - No magnetometer and no I2C on this board. `rc.board_defaults` takes heading from dual antenna
   GNSS (`GPS_1_PROTOCOL` 6, `EKF2_GPS_CTRL` 15, `EKF2_MAG_TYPE` 5, `SYS_HAS_MAG` 0). The driver
-  recognises the UM982 by `UNIAGRICA` and requests `UNIHEADINGA` from there, so the UM482 may not
-  provide heading through this path. Test this before relying on it.
+  recognises the UM982 by `UNIAGRICA` and requests `UNIHEADINGA` from there, which matches the
+  receiver hardware confirmed. Test it before relying on it.
 - No battery measurement, so `board_adc` and `battery_status` are not built. Arming needs
   `CBRK_SUPPLY_CHK` = 894281, which disables all power checks: set it in the test parameter file
   for bench tests only. It is deliberately not a default. The data can only come in over a serial
@@ -100,5 +102,7 @@ Also not enabled: PMU protocol, RTCM input on PB5 (UART5 RX, receive only), W25Q
 
 ## Open items
 
-Board name; the board FMU1 plugs into; PCB and mounting direction for `-R`; airframe file, motor
-count and ESC; battery data source; GNSS model and antenna baseline.
+Board name; FMU1 power source; which edge faces the nose and up for `-R`; airframe file, motor
+count and layout; PWM rate and range across the five or more ESC models (all PWM, no DShot or
+CAN); battery data source; where the M9N connects (GNSS_CAN?) and whether it carries a compass;
+UM982 antenna baseline.
