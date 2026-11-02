@@ -65,6 +65,9 @@ set: it needs the PCB layout and the mounting direction.
 
 ## Hardware-specific behaviour
 
+- PLL1 uses the 8 to 16 MHz input range and flash uses 4 wait states, as RM0433 asks for a 16 MHz
+  reference and a 240 MHz ACLK. Other PX4 H7 boards use the 4 to 8 MHz range and 2 wait states, so
+  compare CPU load if this board looks slower.
 - `stm32_boardinitialize()` closes the PC2 analog switch; without that SPI2 may read nothing on
   MISO. Sources disagree on its reset state for this package, and this has not been tried on a board.
 - SBUS is inverted by U4, so `RC_INVERT_INPUT` is defined as a no-op. Otherwise `rc_input` would

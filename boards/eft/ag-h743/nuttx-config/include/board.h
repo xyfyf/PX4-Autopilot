@@ -97,7 +97,7 @@
 
 #define STM32_PLLCFG_PLLSRC      RCC_PLLCKSELR_PLLSRC_HSE
 
-/* PLL1, wide 4 - 8 MHz input, enable DIVP, DIVQ, DIVR
+/* PLL1, wide 8 - 16 MHz input (DIVM1 passes the 16 MHz HSE straight through), enable DIVP, DIVQ, DIVR
  *
  *   PLL1_VCO = (16,000,000 / 1) * 60 = 960 MHz
  *
@@ -107,7 +107,7 @@
  */
 
 #define STM32_PLLCFG_PLL1CFG    (RCC_PLLCFGR_PLL1VCOSEL_WIDE | \
-				 RCC_PLLCFGR_PLL1RGE_4_8_MHZ | \
+				 RCC_PLLCFGR_PLL1RGE_8_16_MHZ | \
 				 RCC_PLLCFGR_DIVP1EN | \
 				 RCC_PLLCFGR_DIVQ1EN | \
 				 RCC_PLLCFGR_DIVR1EN)
@@ -261,6 +261,9 @@
  *  ------------ ---------- -----------
  *  Vcore        MAX ACLK   WAIT STATES
  *  ------------ ---------- -----------
+ *  1.26-1.40 V    210 MHz    2
+ *  (VOS0 level)   225 MHz    3
+ *                 240 MHz    4
  *  1.15-1.26 V     70 MHz    0
  *  (VOS1 level)   140 MHz    1
  *                 210 MHz    2
@@ -276,7 +279,9 @@
  *  ------------ ---------- -----------
  */
 
-#define BOARD_FLASH_WAITSTATES 2
+/* ACLK is 240 MHz, and NuttX selects VOS0 overdrive for a 480 MHz SYSCLK */
+
+#define BOARD_FLASH_WAITSTATES 4
 
 /* SDMMC definitions ********************************************************/
 
