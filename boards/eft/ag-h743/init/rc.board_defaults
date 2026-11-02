@@ -13,3 +13,10 @@ param set-default RC_INPUT_PROTO 2
 param set-default SYS_HAS_MAG 0
 param set-default EKF2_MAG_TYPE 5
 param set-default EKF2_GPS_CTRL 15
+
+# Logs live on the soldered SD NAND (MKDV4GIL, about 512 MB). With the default
+# 1 GiB SDLOG_MAX_SIZE the logger's free-space target exceeds the whole device,
+# so every new log would first delete all older ones. Use the small-storage
+# values other boards use.
+param set-default SDLOG_MAX_SIZE 40
+param set-default SDLOG_ROTATE 95

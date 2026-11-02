@@ -81,6 +81,10 @@ set: it needs the PCB layout and the mounting direction.
   for bench tests only. It is deliberately not a default. The data can only come in over a serial
   port or CAN.
 - There is no FRAM, so parameters live on the soldered SD NAND (`/fs/microsd/params`).
+- Logs share that SD NAND (about 512 MB, no card slot). `rc.board_defaults` sets
+  `SDLOG_MAX_SIZE` 40 and `SDLOG_ROTATE` 95: with the 1 GiB default the cleanup target exceeds
+  the device, and each new log would delete every older one. Without USB, logs come out over
+  MAVLink FTP on a serial port, which is slow at 57600 baud.
 - LED cathodes are on PE4 to PE6. Their anode goes to 5V through 430R, so the pins are open drain:
   a 3.3V push-pull high could leave the red LED glowing. The schematic ties that anode to the net
   `+5V_BUS`, which connects to nothing else, so the LEDs may not light at all.
