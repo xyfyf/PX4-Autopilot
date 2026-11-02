@@ -53,6 +53,11 @@ lines are high impedance from reset until the end of `board_app_initialize()`, a
 `board_on_reset()`. Nothing pulls the ESC side low while they are disconnected, so check how the
 ESCs behave on a floating line. DIR is tied high, so bidirectional DShot cannot work.
 
+If `stm32_sdio_initialize()` fails, `board_app_initialize()` returns before it drives PE10 low, so
+the outputs stay disabled: no PWM points at the SD NAND first. PWM1 to PWM4 share TIM4 and PWM5 to
+PWM8 share TIM5, so each group runs at one rate (`PWM_MAIN_TIM0`, `PWM_MAIN_TIM1`). Keep 50 Hz
+pumps or servos out of a motor group.
+
 ## Sensors
 
 | Device | Bus | CS | Start |
