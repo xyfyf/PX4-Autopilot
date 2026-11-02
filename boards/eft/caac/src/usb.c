@@ -57,7 +57,7 @@ __EXPORT void stm32_usbinitialize(void)
 
 	/* Configure the OTG FS VBUS sensing GPIO, Power On, and Overcurrent GPIOs */
 
-/* No VBUS sensing pin on this board */
+	/* No VBUS sensing pin on this board */
 }
 
 /************************************************************************************
