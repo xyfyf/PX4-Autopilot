@@ -109,7 +109,8 @@ FDCAN1 (Motor_CAN) and net CAN1 is FDCAN2 (GNSS_CAN). The S pins (PD8, PA10) are
 which is silent mode; drive them low before enabling `uavcan`. The M9N and compass module sits on
 GNSS_CAN, which is FDCAN2, so `CONFIG_BOARD_UAVCAN_INTERFACES` has to be 2 to reach it.
 
-Also not enabled: PMU protocol, RTCM input on PB5 (UART5 RX, receive only), W25Q16 on SPI4
+Also not enabled: PMU protocol, RTCM input on PB5 (UART5 RX, receive only; not needed, since the
+correction radio connects to the UM982 directly), W25Q16 on SPI4
 (PE11 to PE14), hardware watchdog.
 
 ## Open items
