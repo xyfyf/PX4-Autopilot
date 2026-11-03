@@ -81,11 +81,12 @@ the nose and which faces up is still open, and can be measured on the board if n
   MISO. Sources disagree on its reset state for this package, and this has not been tried on a board.
 - SBUS is inverted by U4, so `RC_INVERT_INPUT` is defined as a no-op. Otherwise `rc_input` would
   invert the UART again while scanning for SBUS.
-- No magnetometer and no I2C on this board. `rc.board_defaults` takes heading from dual antenna
-  GNSS (`GPS_1_PROTOCOL` 6, `EKF2_GPS_CTRL` 15, `EKF2_MAG_TYPE` 5, `SYS_HAS_MAG` 0). The driver
-  recognises the UM982 by `UNIAGRICA` and requests `UNIHEADINGA` from there, which matches the
-  receiver hardware confirmed. Test it before relying on it. The heading is also dropped until
-  `SENS_GNSS0_HDG` is 2 and both antenna positions are set (`SENS_GNSS0_OFFX/Y/Z`,
+- No magnetometer and no I2C on this board. The airframe's compass is in the M9N module on
+  GNSS_CAN, which needs DroneCAN (see below). Until then `rc.board_defaults` takes heading from
+  dual antenna GNSS (`GPS_1_PROTOCOL` 6, `EKF2_GPS_CTRL` 15, `EKF2_MAG_TYPE` 5, `SYS_HAS_MAG` 0).
+  The driver recognises the UM982 by `UNIAGRICA` and requests `UNIHEADINGA` from there, which
+  matches the receiver hardware confirmed. Test it before relying on it. The heading is also
+  dropped until `SENS_GNSS0_HDG` is 2 and both antenna positions are set (`SENS_GNSS0_OFFX/Y/Z`,
   `SENS_GNSS0_AUXX/Y/Z`), and while the receiver's baseline differs from them by more than 20%.
   Those depend on the airframe, so they are not board defaults.
 - No battery measurement, so `board_adc` and `battery_status` are not built. Arming needs
@@ -105,7 +106,8 @@ the nose and which faces up is still open, and can be measured on the board if n
 
 `GPIO_CAN1_*` and `GPIO_CAN2_*` in `board.h` follow the pins, not the net names: net CAN2 is
 FDCAN1 (Motor_CAN) and net CAN1 is FDCAN2 (GNSS_CAN). The S pins (PD8, PA10) are pulled high,
-which is silent mode; drive them low before enabling `uavcan`.
+which is silent mode; drive them low before enabling `uavcan`. The M9N and compass module sits on
+GNSS_CAN, which is FDCAN2, so `CONFIG_BOARD_UAVCAN_INTERFACES` has to be 2 to reach it.
 
 Also not enabled: PMU protocol, RTCM input on PB5 (UART5 RX, receive only), W25Q16 on SPI4
 (PE11 to PE14), hardware watchdog.
@@ -115,5 +117,5 @@ Also not enabled: PMU protocol, RTCM input on PB5 (UART5 RX, receive only), W25Q
 The vehicle is a quad, so the four motors fit in the TIM4 group (PWM1 to PWM4) and PWM5 to PWM8
 stay free for 50 Hz loads. Still open: board name; FMU1 power source; which edge faces the nose
 and up for `-R` (`SENS_BOARD_ROT` until then); which motor is on which output; PWM rate and range
-across the five or more ESC models (all PWM, no DShot or CAN); battery data source; where the M9N
-connects (GNSS_CAN?) and whether it carries a compass; UM982 antenna baseline.
+across the five or more ESC models (all PWM, no DShot or CAN); battery data source; whether the M9N
+and compass module on GNSS_CAN speaks DroneCAN, and at what bitrate; UM982 antenna baseline.
