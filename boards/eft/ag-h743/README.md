@@ -6,15 +6,17 @@ STM32H743VIT6, 16 MHz HSE, board_id 9903. Build: `make eft_ag-h743_default`.
 
 Status: builds; not flashed or bench-tested. Scope is first flight only, without the PMU.
 
-## Check before powering on
+## Schematic labels to confirm
 
-Read from the schematic and not yet checked on a board. Hardware has been asked to confirm both.
+The hardware has been in service for over two years without problems, so these look like
+schematic labelling issues. They do not block power-on or flight; hardware has been asked what
+the boards actually carry.
 
 - **C3 and C4 read 2.2 uF on the 16 MHz crystal**, which a distributor lists with a 12 pF load.
-  If HSE does not start, `stm32_stdclockconfig()` leaves the MCU on HSI without the PLL, so baud
-  rates are wrong and the console looks garbled.
-- **U4 (74LVC2G240) has 2A, 2OE# and 2Y grounded**, so its unused gate appears to drive high into
-  ground. Check that U4 stays cool, because SBUS goes through its other gate.
+  If HSE ever fails to start, `stm32_stdclockconfig()` leaves the MCU on HSI without the PLL, so
+  baud rates are wrong and the console looks garbled.
+- **U4 (74LVC2G240) has 2A, 2OE# and 2Y grounded**, which as drawn drives the unused gate's
+  output into ground. SBUS goes through its other gate.
 
 ## Flashing
 
