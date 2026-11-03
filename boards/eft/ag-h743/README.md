@@ -107,7 +107,8 @@ Also not enabled: PMU protocol, RTCM input on PB5 (UART5 RX, receive only), W25Q
 
 ## Open items
 
-Board name; FMU1 power source; which edge faces the nose and up for `-R`; airframe file, motor
-count and layout; PWM rate and range across the five or more ESC models (all PWM, no DShot or
-CAN); battery data source; where the M9N connects (GNSS_CAN?) and whether it carries a compass;
-UM982 antenna baseline.
+The vehicle is a quad, so the four motors fit in the TIM4 group (PWM1 to PWM4) and PWM5 to PWM8
+stay free for 50 Hz loads. Still open: board name; FMU1 power source; which edge faces the nose
+and up for `-R` (`SENS_BOARD_ROT` until then); which motor is on which output; PWM rate and range
+across the five or more ESC models (all PWM, no DShot or CAN); battery data source; where the M9N
+connects (GNSS_CAN?) and whether it carries a compass; UM982 antenna baseline.
