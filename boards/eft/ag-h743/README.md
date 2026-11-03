@@ -84,7 +84,10 @@ the nose and which faces up is still open, and can be measured on the board if n
 - No magnetometer and no I2C on this board. `rc.board_defaults` takes heading from dual antenna
   GNSS (`GPS_1_PROTOCOL` 6, `EKF2_GPS_CTRL` 15, `EKF2_MAG_TYPE` 5, `SYS_HAS_MAG` 0). The driver
   recognises the UM982 by `UNIAGRICA` and requests `UNIHEADINGA` from there, which matches the
-  receiver hardware confirmed. Test it before relying on it.
+  receiver hardware confirmed. Test it before relying on it. The heading is also dropped until
+  `SENS_GNSS0_HDG` is 2 and both antenna positions are set (`SENS_GNSS0_OFFX/Y/Z`,
+  `SENS_GNSS0_AUXX/Y/Z`), and while the receiver's baseline differs from them by more than 20%.
+  Those depend on the airframe, so they are not board defaults.
 - No battery measurement, so `board_adc` and `battery_status` are not built. Arming needs
   `CBRK_SUPPLY_CHK` = 894281, which disables all power checks: set it in the test parameter file
   for bench tests only. It is deliberately not a default. The data can only come in over a serial
