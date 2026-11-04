@@ -120,8 +120,13 @@ correction radio connects to the UM982 directly), W25Q16 on SPI4
 
 ## Open items
 
+The same core board flies a small indoor quad and the outdoor crop sprayer. ESCs can be PWM on
+PWM1 to PWM4, or CAN on Motor_CAN (FDCAN1): CAN ESCs report RPM for the dynamic notch, and need
+`uavcan` with both interfaces, since GNSS_CAN is FDCAN2. Each airframe gets its own parameter file.
+
 The vehicle is a quad, so the four motors fit in the TIM4 group (PWM1 to PWM4) and PWM5 to PWM8
-stay free for 50 Hz loads. Still open: board name; FMU1 power source; which edge faces the nose
-and up for `-R` (`SENS_BOARD_ROT` until then); which motor is on which output; PWM rate and range
-across the five or more ESC models (all PWM, no DShot or CAN); which CAN bus carries the battery data, and in what protocol; whether the M9N
-and compass module on GNSS_CAN speaks DroneCAN, and at what bitrate; UM982 antenna baseline.
+stay free for 50 Hz loads. Still open: board name; FMU1 power source; which edge faces the nose and
+up for `-R` (`SENS_BOARD_ROT` until then); which motor is on which output; PWM rate and range
+across the five or more PWM ESC models; which airframe uses CAN ESCs, and their protocol; which CAN
+bus carries the battery data, and in what protocol; whether the M9N and compass module on GNSS_CAN
+speaks DroneCAN, and at what bitrate; UM982 antenna baseline.
