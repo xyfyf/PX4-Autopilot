@@ -89,10 +89,11 @@ the nose and which faces up is still open, and can be measured on the board if n
   dropped until `SENS_GNSS0_HDG` is 2 and both antenna positions are set (`SENS_GNSS0_OFFX/Y/Z`,
   `SENS_GNSS0_AUXX/Y/Z`), and while the receiver's baseline differs from them by more than 20%.
   Those depend on the airframe, so they are not board defaults.
-- No battery measurement, so `board_adc` and `battery_status` are not built. Arming needs
-  `CBRK_SUPPLY_CHK` = 894281, which disables all power checks: set it in the test parameter file
-  for bench tests only. It is deliberately not a default. The data can only come in over a serial
-  port or CAN.
+- No battery measurement on the board, so `board_adc` and `battery_status` are not built. The
+  battery voltage is available on the vehicle's CAN bus, but the firmware does not read it yet:
+  that needs the bus, the protocol and a driver (PX4's UAVCAN battery driver if it is DroneCAN).
+  Until then arming needs `CBRK_SUPPLY_CHK` = 894281, which disables all power checks: set it in
+  the test parameter file for bench tests only. It is deliberately not a default.
 - There is no FRAM, so parameters live on the soldered SD NAND (`/fs/microsd/params`).
 - Logs share that SD NAND (about 512 MB, no card slot). `rc.board_defaults` sets
   `SDLOG_MAX_SIZE` 40 and `SDLOG_ROTATE` 95: with the 1 GiB default the cleanup target exceeds
@@ -118,5 +119,5 @@ correction radio connects to the UM982 directly), W25Q16 on SPI4
 The vehicle is a quad, so the four motors fit in the TIM4 group (PWM1 to PWM4) and PWM5 to PWM8
 stay free for 50 Hz loads. Still open: board name; FMU1 power source; which edge faces the nose
 and up for `-R` (`SENS_BOARD_ROT` until then); which motor is on which output; PWM rate and range
-across the five or more ESC models (all PWM, no DShot or CAN); battery data source; whether the M9N
+across the five or more ESC models (all PWM, no DShot or CAN); which CAN bus carries the battery data, and in what protocol; whether the M9N
 and compass module on GNSS_CAN speaks DroneCAN, and at what bitrate; UM982 antenna baseline.
