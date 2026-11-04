@@ -406,12 +406,7 @@
 // #define GPIO_SDMMC1_CMD  GPIO_SDMMC1_CMD   /* PD2  */
 
 
-/* USB
- *
- *      OTG_FS_DM                           PA11
- *      OTG_FS_DP                           PA12
- *      VBUS                                PA9
- */
+/* No USB: PA11 and PA12 carry FDCAN1 (Motor_CAN), and PA9 is SPI2 SCK */
 
 
 /* Board provides GPIO or other Hardware for signaling to timing analyzer */

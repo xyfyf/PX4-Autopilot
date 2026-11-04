@@ -68,9 +68,13 @@ pumps or servos out of a motor group.
 | BMI088 gyro | SPI2 | PA8 | `bmi088 -G -s -b 2 start` |
 | SPL06 | SPI2 | PB4 | `spl06 -s -b 2 start` |
 
-The BMI088 INT pins are not connected, so the driver reads on a timer. Rotation (`-R`) is not
-set. Hardware says the board is mounted vertically, perpendicular to the ground; which edge faces
-the nose and which faces up is still open, and can be measured on the board if no layout arrives.
+The BMI088 INT pins are not connected, so the driver reads on a timer. The PWM ESCs report no RPM,
+so `gyro_fft` is built for a dynamic notch from the gyro spectrum (`IMU_GYRO_FFT_EN` 1, bit 1 of
+`IMU_GYRO_DNF_EN`). The BMI088 has no heater, so `temperature_compensation` is built for a thermal
+calibration (`TC_G_ENABLE`, `TC_A_ENABLE`). `mc_autotune_attitude_control` is built for tuning.
+Rotation (`-R`) is not set. Hardware says the board is mounted vertically, perpendicular to the
+ground; which edge faces the nose and which faces up is still open, and can be measured on the
+board if no layout arrives.
 
 ## Hardware-specific behaviour
 
