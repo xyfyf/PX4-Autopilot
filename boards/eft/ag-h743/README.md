@@ -20,9 +20,9 @@ the boards actually carry.
 
 ## Flashing
 
-There is no USB. The PX4 bootloader (`make eft_ag-h743_bootloader`, 128 KB at `0x08000000`)
-talks only on UART7, the REC pair on FMU1 pins 13/15, at 921600 baud. The application is linked
-at `0x08020000`.
+There is no USB. The PX4 bootloader (`make eft_ag-h743_bootloader`, about 40 KB) fills the first
+128 KB flash sector at `0x08000000` and talks only on UART7, the REC pair on FMU1 pins 13/15, at
+921600 baud. The application is linked at `0x08020000` and has 1920 KB.
 
 First time, over SWD (P1: 3.3V, GND, PA14 CLK, PA13 DATA), write
 `extras/eft_ag-h743_bootloader.bin` at `0x08000000` and `eft_ag-h743_default.bin` at
