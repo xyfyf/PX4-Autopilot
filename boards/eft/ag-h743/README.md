@@ -4,7 +4,7 @@ Provisional name. The schematic is `WK_FMU-2.0`, and every pin here comes from i
 
 STM32H743VIT6, 16 MHz HSE, board_id 9903. Build: `make eft_ag-h743_default`.
 
-Status: builds; not flashed or bench-tested. Scope is first flight only, without the PMU.
+Status: application and bootloader build; not flashed or bench-tested. Scope is first flight only, without the PMU.
 
 ## Schematic labels to confirm
 
@@ -20,9 +20,21 @@ the boards actually carry.
 
 ## Flashing
 
-There is no USB and no bootloader: the application is linked at `0x08000000`. Flash the `.bin`
-over SWD (P1: 3.3V, GND, PA14 CLK, PA13 DATA). NRST and BOOT0 are not on the header, so do not
-reuse PA13/PA14 in firmware.
+There is no USB. The PX4 bootloader (`make eft_ag-h743_bootloader`, 128 KB at `0x08000000`)
+talks only on UART7, the REC pair on FMU1 pins 13/15, at 921600 baud. The application is linked
+at `0x08020000`.
+
+First time, over SWD (P1: 3.3V, GND, PA14 CLK, PA13 DATA), write
+`extras/eft_ag-h743_bootloader.bin` at `0x08000000` and `eft_ag-h743_default.bin` at
+`0x08020000`. NRST and BOOT0 are not on the header, so do not reuse PA13/PA14 in firmware.
+
+After that, over a 3.3 V USB-TTL adapter on REC: type `reboot -b` in the console (57600), then
+
+    Tools/px4_uploader.py --port /dev/ttyUSB0 --baud-bootloader 921600 build/eft_ag-h743_default/eft_ag-h743_default.px4
+
+With no valid application the bootloader stays put, so a failed upload can be retried. Break
+detection on the RX line is off, so a floating REC line cannot hold the board in the bootloader.
+The bootloader leaves PE10 (PWM OE#) high, so the ESC lines stay high impedance.
 
 ## Serial ports
 

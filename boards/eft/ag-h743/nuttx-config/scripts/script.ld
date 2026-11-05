@@ -46,11 +46,11 @@
  *   2) System Flash memory:
  *
  *      Bank 1: Start address 0x1FF0:0000 to 0x1FF1:FFFF with 1 x 128Kb sector
- *      Bank 1: Start address 0x1FF4:0000 to 0x1FF5:FFFF with 1 x 128Kb sector
+ *      Bank 2: Start address 0x1FF4:0000 to 0x1FF5:FFFF with 1 x 128Kb sector
  *
  *   3) User option bytes for user configuration, only in Bank 1.
  *
- * In the STM32H743II, two different boot spaces can be selected through
+ * In the STM32H743VI, two different boot spaces can be selected through
  * the BOOT pin and the boot base address programmed in the BOOT_ADD0 and
  * BOOT_ADD1 option bytes:
  *
@@ -59,11 +59,13 @@
  *   2) BOOT=1: Boot address defined by user option byte BOOT_ADD1[15:0].
  *      ST programmed value: System bootloader at 0x1FF0:0000
  *
- * There's a switch on board, the BOOT0 pin is at ground so by default,
- * the STM32 will boot to address 0x0800:0000 in FLASH unless the switch is
- * drepresed, then the boot will be from 0x1FF0:0000
+ * WK_FMU-2.0 ties BOOT0 to ground through R2 (10k) and does not bring it out,
+ * so the STM32 always boots from 0x0800:0000 in FLASH.
  *
- * The STM32H743ZI also has 1024Kb of data SRAM.
+ * The first 128Kb sector holds the PX4 bootloader (bootloader_script.ld);
+ * this application starts at 0x0802:0000.
+ *
+ * The STM32H743VI also has 1024Kb of data SRAM.
  * SRAM is split up into several blocks and into three power domains:
  *
  *   1) TCM SRAMs are dedicated to the Cortex-M7 and are accessible with
@@ -102,15 +104,14 @@
  *      4.1)  64Kb of SRAM4 beginning at address 0x3800:0000
  *      4.1)   4Kb of backup RAM beginning at address 0x3880:0000
  *
- * When booting from FLASH, FLASH memory is aliased to address 0x0000:0000
- * where the code expects to begin execution by jumping to the entry point in
- * the 0x0800:0000 address range.
+ * The bootloader checks the application vector table at 0x0802:0000 and
+ * jumps to its entry point.
  */
 
 MEMORY
 {
 	ITCM_RAM  (rwx) : ORIGIN = 0x00000000, LENGTH =   64K
-	FLASH      (rx) : ORIGIN = 0x08000000, LENGTH = 2048K
+	FLASH      (rx) : ORIGIN = 0x08020000, LENGTH = 1920K
 
 	DTCM1_RAM (rwx) : ORIGIN = 0x20000000, LENGTH =   64K
 	DTCM2_RAM (rwx) : ORIGIN = 0x20010000, LENGTH =   64K
