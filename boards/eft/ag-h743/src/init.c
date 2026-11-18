@@ -194,7 +194,8 @@ __EXPORT int board_app_initialize(uintptr_t arg)
 	/* Configure the HW based on the manifest */
 	px4_platform_configure();
 
-	/* The PWM pins are pulled down by board_on_reset(), so the ESCs see a low line until pwm_out starts */
+	/* Enable the level shifter. Until now its outputs were high impedance, so the ESC lines floated;
+	 * the pull-downs from board_on_reset() act on the MCU side only. */
 	px4_arch_gpiowrite(GPIO_PWM_OE_N, 0);
 
 	return OK;
