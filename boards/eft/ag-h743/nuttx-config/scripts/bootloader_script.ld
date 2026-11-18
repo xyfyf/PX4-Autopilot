@@ -46,7 +46,7 @@
  *   2) System Flash memory:
  *
  *      Bank 1: Start address 0x1FF0:0000 to 0x1FF1:FFFF with 1 x 128Kb sector
- *      Bank 1: Start address 0x1FF4:0000 to 0x1FF5:FFFF with 1 x 128Kb sector
+ *      Bank 2: Start address 0x1FF4:0000 to 0x1FF5:FFFF with 1 x 128Kb sector
  *
  *   3) User option bytes for user configuration, only in Bank 1.
  *
