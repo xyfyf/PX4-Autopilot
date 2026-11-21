@@ -59,6 +59,7 @@ if(PX4_PLATFORM MATCHES "posix")
 		xvert
 		standard_vtol
 		hex
+		hex_e616f
 		rover_ackermann
 	)
 

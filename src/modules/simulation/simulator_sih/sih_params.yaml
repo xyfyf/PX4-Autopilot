@@ -254,6 +254,70 @@ parameters:
       type: float
       default: -1.0
       unit: m
+    SIH_ROT${i}_KT:
+      description:
+        short: "Rotor ${i} thrust scale"
+      type: float
+      default: 1.0
+      min: 0
+      num_instances: 6
+    SIH_ROT${i}_KQ:
+      description:
+        short: "Rotor ${i} reaction torque scale"
+      type: float
+      default: 1.0
+      min: 0
+      num_instances: 6
+    SIH_PAIR${i}_ARM:
+      description:
+        short: "Hex opposite-pair ${i} yaw arm (0 = rotors 0/3, 1 = 2/5, 2 = 4/1)"
+      type: float
+      default: 0.0
+      unit: m
+      num_instances: 3
+      decimal: 5
+    SIH_T_TAU_UP:
+      description:
+        short: "Multirotor spool-up time constant (zero uses SIH_T_TAU)"
+      type: float
+      default: 0.0
+      min: 0
+      unit: s
+    SIH_T_TAU_DN:
+      description:
+        short: "Multirotor powered spool-down time constant (zero uses SIH_T_TAU)"
+      type: float
+      default: 0.0
+      min: 0
+      unit: s
+    SIH_T_TAU_STOP:
+      description:
+        short: "Multirotor coast time after drive cutoff (zero uses SIH_T_TAU)"
+      type: float
+      default: 0.0
+      min: 0
+      unit: s
+    SIH_MC_EXPO:
+      description:
+        short: "Static propeller curve exponent and command-dependent Q/T (-1 uses stock curves)"
+      type: float
+      default: -1.0
+      min: -1
+      max: 1
+    SIH_MC_RPM_MAX:
+      description:
+        short: "Multirotor full-scale RPM in the per-rotor model"
+      type: float
+      default: 10000.0
+      min: 1
+      unit: rpm
+    SIH_MC_REV_FRAC:
+      description:
+        short: "Reverse thrust and torque fraction at equal speed"
+      type: float
+      default: 1.0
+      min: 0
+      max: 1
     SIH_T_TAU:
       description:
         short: thruster time constant tau

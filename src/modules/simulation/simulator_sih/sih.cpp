@@ -83,6 +83,8 @@ void Sih::run()
 					    static_cast<int32_t>(VehicleType::First),
 					    static_cast<int32_t>(VehicleType::Last)));
 
+	configure_rotors();
+
 #if defined(ENABLE_LOCKSTEP_SCHEDULER)
 	lockstep_loop();
 #else
@@ -241,6 +243,7 @@ void Sih::sensor_step()
 		// update parameters from storage
 		updateParams();
 		parameters_updated();
+		configure_rotors();
 	}
 
 	updateFailureConfig();
@@ -367,8 +370,127 @@ void Sih::parameters_updated()
 	_v_wind_N = Vector3f(_sih_wind_n.get(), _sih_wind_e.get(), 0.f);
 }
 
+void Sih::configure_rotors()
+{
+	if (_vehicle != VehicleType::Quadcopter && _vehicle != VehicleType::Hexacopter) {
+		return;
+	}
+
+	_per_rotor = _sih_mc_expo.get() >= 0.f || _sih_t_tau_up.get() > 0.f || _sih_t_tau_dn.get() > 0.f
+		     || _sih_t_tau_stop.get() > 0.f || _sih_mc_rev_frac.get() < 1.f || fabsf(_sih_mc_rpm_max.get() - 10000.f) > 0.f;
+
+	// Read indexed parameters only at startup and parameter updates, never in the dynamics loop.
+	char name[17];
+
+	for (int i = 0; i < num_motors(); ++i) {
+		snprintf(name, sizeof(name), "SIH_ROT%d_KT", i);
+		param_get(param_find(name), &_kt[i]);
+		snprintf(name, sizeof(name), "SIH_ROT%d_KQ", i);
+		param_get(param_find(name), &_kq[i]);
+		_per_rotor |= fabsf(_kt[i] - 1.f) > 0.f || fabsf(_kq[i] - 1.f) > 0.f;
+	}
+
+	if (_vehicle == VehicleType::Hexacopter) {
+		for (int i = 0; i < 3; ++i) {
+			snprintf(name, sizeof(name), "SIH_PAIR%d_ARM", i);
+			param_get(param_find(name), &_pair_arm[i]);
+			_per_rotor |= fabsf(_pair_arm[i]) > 0.f;
+		}
+	}
+}
+
+float Sih::rotor_fraction(float command) const
+{
+	const float expo = _sih_mc_expo.get();
+
+	if (expo >= 0.f) {
+		return command * ((1.f - expo) + expo * fabsf(command));
+	}
+
+	return _vehicle == VehicleType::Hexacopter ? command * fabsf(command) : command;
+}
+
+float Sih::rotor_speed(float command) const
+{
+	return copysignf(sqrtf(fabsf(rotor_fraction(command))), command);
+}
+
+void Sih::read_rotors(const float dt)
+{
+	const int count = num_motors();
+	actuator_outputs_s outputs;
+	const bool fresh = _actuator_out_sub.update(&outputs);
+
+	if (fresh) {
+		_last_actuator_output_time = outputs.timestamp;
+
+		for (int i = 0; i < count; ++i) {
+			_rotor_target[i] = static_cast<unsigned>(i) < outputs.noutputs && PX4_ISFINITE(outputs.output[i]) ? outputs.output[i] : 0.f;
+		}
+	}
+
+	actuator_motors_s motors;
+
+	if (_motor_cmd_sub.update(&motors)) {
+		_command_stop_mask = 0;
+
+		for (int i = 0; i < count; ++i) {
+			if (!PX4_ISFINITE(motors.control[i])) {
+				_command_stop_mask |= 1u << i; // CA explicitly stopped this rotor (including mode 1 opposite)
+			}
+		}
+	}
+
+	const auto faults = failure_injection::process_motor(_failure_config);
+	const uint16_t cut_mask = faults.stop_mask | faults.failure_mask;
+	_coasting_mask = 0;
+
+	for (int i = 0; i < count; ++i) {
+		const uint16_t bit = 1u << i;
+		const float target = (cut_mask & bit) ? 0.f : _rotor_target[i];
+		const bool coasting = ((cut_mask | _command_stop_mask) & bit) && fabsf(target) <= 0.f;
+		const bool speeding_up = fabsf(target) > fabsf(_u[i]) && target * _u[i] >= 0.f;
+		float tau = speeding_up ? _sih_t_tau_up.get() : _sih_t_tau_dn.get();
+
+		if (coasting) {
+			_coasting_mask |= bit;
+			tau = _sih_t_tau_stop.get();
+		}
+
+		if (tau <= 0.f) {
+			tau = _T_TAU;
+		}
+
+		const float alpha = tau > 0.f ? -expm1f(-dt / tau) : 1.f;
+		const float expo = _sih_mc_expo.get();
+
+		if (expo >= 0.f) {
+			// Identified lags apply to RPM. Invert f(c) = (1-e)c + e*c^2
+			// to recover the drive variable used in the reaction torque.
+			const float speed = rotor_speed(_u[i]);
+			const float next = speed + alpha * (rotor_speed(target) - speed);
+			const float f = next * next;
+			const float b = 1.f - expo;
+			const float denominator = b + sqrtf(b * b + 4.f * expo * f);
+			_u[i] = denominator > 0.f ? copysignf(2.f * f / denominator, next) : 0.f;
+
+		} else {
+			_u[i] += alpha * (target - _u[i]);
+		}
+	}
+
+	if (fresh) {
+		publish_esc_status();
+	}
+}
+
 void Sih::read_motors(const float dt)
 {
+	if (_per_rotor) {
+		read_rotors(dt);
+		return;
+	}
+
 	actuator_outputs_s actuators_out;
 
 	if (_actuator_out_sub.update(&actuators_out)) {
@@ -430,10 +552,15 @@ void Sih::publish_esc_status()
 		_esc_status.esc[motor_idx].timestamp = hrt_absolute_time();
 		_esc_status.esc[motor_idx].actuator_function = esc_report_s::ACTUATOR_FUNCTION_MOTOR1 + motor_idx;
 		_esc_status.esc[motor_idx].esc_temperature = 50.f;
-		_esc_status.esc[motor_idx].esc_rpm = (int32_t)roundf(Thruster::throttle_to_rpm(_u[i], max_rpm));
+		if (_per_rotor) {
+			_esc_status.esc[motor_idx].esc_rpm = (int32_t)roundf(_sih_mc_rpm_max.get() * rotor_speed(_u[i]));
+
+		} else {
+			_esc_status.esc[motor_idx].esc_rpm = (int32_t)roundf(Thruster::throttle_to_rpm(_u[i], max_rpm));
+		}
 		_esc_status.esc_online_flags |= 1u << motor_idx;
 
-		if (_u[i] > FLT_EPSILON) {
+		if (_u[i] > FLT_EPSILON || (_per_rotor && _u[i] < -FLT_EPSILON)) {
 			any_motor_running = true;
 		}
 
@@ -449,12 +576,62 @@ void Sih::publish_esc_status()
 	_esc_status_pub.publish(failure_injection::process_esc(_failure_config, _esc_status));
 }
 
+void Sih::generate_rotor_wrench()
+{
+	// Positions in units of the stock roll/pitch arms; FRD body axes.
+	static constexpr float h = M_SQRT3_F / 2.f;
+	static constexpr float hex_x[] {h, 0.f, -h, -h, 0.f, h};
+	static constexpr float hex_y[] {.5f, 1.f, .5f, -.5f, -1.f, -.5f};
+	static constexpr int hex_pair[] {0, 2, 1, 0, 2, 1}; // DJI pairs 1/4, 2/5, 3/6
+	static constexpr float quad_x[] {1.f, -1.f, 1.f, -1.f};
+	static constexpr float quad_y[] {1.f, -1.f, -1.f, 1.f};
+	const bool hex = _vehicle == VehicleType::Hexacopter;
+	debug_array_s log{};
+	_T_B = Vector3f{};
+	_Mt_B = Vector3f{};
+
+	for (int i = 0; i < num_motors(); ++i) {
+		const float x = _L_PITCH * (hex ? hex_x[i] : quad_x[i]);
+		const float y = _L_ROLL * (hex ? hex_y[i] : quad_y[i]);
+		const bool ccw = hex ? (i % 2 == 0) : i < 2;
+		const float command = _u[i];
+		const float fraction = rotor_fraction(command) * (command < 0.f ? _sih_mc_rev_frac.get() : 1.f);
+		const float thrust = _T_MAX * _kt[i] * fraction;
+		const float q_curve = _sih_mc_expo.get() >= 0.f ? fabsf(command) : 1.f;
+		const float reaction = (ccw ? _Q_MAX : -_Q_MAX) * _kq[i] * fraction * q_curve;
+		const float bias = hex ? _pair_arm[hex_pair[i]] * thrust : 0.f;
+		_T_B(2) -= thrust;
+		_Mt_B += Vector3f(-y * thrust, x * thrust, reaction + bias);
+		log.data[i] = thrust;
+		log.data[6 + i] = _sih_mc_rpm_max.get() * rotor_speed(command);
+		log.data[12 + i] = reaction;
+		log.data[18 + i] = bias;
+		log.data[24 + i] = _rotor_target[i];
+	}
+
+	const hrt_abstime now = hrt_absolute_time();
+
+	if (now - _rotor_log_time >= 10_ms) {
+		_rotor_log_time = now;
+		log.timestamp = now;
+		log.id = 616;
+		memcpy(log.name, "sih_rotor", sizeof("sih_rotor"));
+		log.data[30] = _coasting_mask;
+		_rotor_log_pub.publish(log);
+	}
+}
+
 void Sih::generate_force_and_torques(const float dt)
 {
 	// air-relative velocity in body frame [m/s]
 	_v_B = _q_E.rotateVectorInverse(_R_N2E * _v_apparent_N);
 
-	if (_vehicle == VehicleType::Quadcopter) {
+	if (_per_rotor) {
+		generate_rotor_wrench();
+		_Fa_E = -_KDV * _R_N2E * _v_apparent_N;
+		_Ma_B = -_KDW * _w_B;
+
+	} else if (_vehicle == VehicleType::Quadcopter) {
 
 		_T_B = Vector3f(0.0f, 0.0f, -_T_MAX * (+_u[0] + _u[1] + _u[2] + _u[3]));
 		_Mt_B = Vector3f(_L_ROLL * _T_MAX * (-_u[0] + _u[1] + _u[2] - _u[3]),

@@ -77,6 +77,8 @@
 #include <lib/failure_injection/FailureInjection.hpp>
 #include <uORB/topics/distance_sensor.h>
 #include <uORB/topics/failure_injection.h>
+#include <uORB/topics/actuator_motors.h>
+#include <uORB/topics/debug_array.h>
 #include <uORB/topics/esc_status.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/vehicle_angular_velocity.h>
@@ -191,6 +193,23 @@ private:
 	// read the motor signals outputted from the mixer
 	void read_motors(const float dt);
 	void publish_esc_status();
+	void configure_rotors();
+	void read_rotors(float dt);
+	void generate_rotor_wrench();
+	float rotor_fraction(float command) const;
+	float rotor_speed(float command) const;
+
+	static constexpr int MAX_ROTORS = 6;
+	bool _per_rotor{false};
+	float _kt[MAX_ROTORS]{};
+	float _kq[MAX_ROTORS]{};
+	float _pair_arm[3]{};
+	float _rotor_target[MAX_ROTORS]{};
+	uint16_t _command_stop_mask{0};
+	uint16_t _coasting_mask{0};
+	hrt_abstime _rotor_log_time{0};
+	uORB::Subscription _motor_cmd_sub{ORB_ID(actuator_motors)};
+	uORB::Publication<debug_array_s> _rotor_log_pub{ORB_ID(debug_array)};
 	uint8_t num_motors() const;
 
 	// generate the motors thrust and torque in the body frame
@@ -340,6 +359,12 @@ private:
 		(ParamFloat<px4::params::SIH_DISTSNSR_MAX>) _sih_distance_snsr_max,
 		(ParamFloat<px4::params::SIH_DISTSNSR_OVR>) _sih_distance_snsr_override,
 		(ParamFloat<px4::params::SIH_T_TAU>) _sih_thrust_tau,
+		(ParamFloat<px4::params::SIH_T_TAU_UP>) _sih_t_tau_up,
+		(ParamFloat<px4::params::SIH_T_TAU_DN>) _sih_t_tau_dn,
+		(ParamFloat<px4::params::SIH_T_TAU_STOP>) _sih_t_tau_stop,
+		(ParamFloat<px4::params::SIH_MC_EXPO>) _sih_mc_expo,
+		(ParamFloat<px4::params::SIH_MC_RPM_MAX>) _sih_mc_rpm_max,
+		(ParamFloat<px4::params::SIH_MC_REV_FRAC>) _sih_mc_rev_frac,
 		// forward propeller
 		(ParamFloat<px4::params::SIH_F_T_MAX>) _sih_f_thrust_max,
 		(ParamFloat<px4::params::SIH_F_Q_MAX>) _sih_f_torque_max,
