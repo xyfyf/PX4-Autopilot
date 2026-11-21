@@ -201,6 +201,9 @@ private:
 
 	static constexpr int MAX_ROTORS = 6;
 	bool _per_rotor{false};
+	bool _has_rotor_tilt{false};
+	matrix::Vector3f _rotor_position[MAX_ROTORS]{};
+	matrix::Vector3f _rotor_axis[MAX_ROTORS]{};
 	float _kt[MAX_ROTORS]{};
 	float _kq[MAX_ROTORS]{};
 	float _pair_arm[3]{};

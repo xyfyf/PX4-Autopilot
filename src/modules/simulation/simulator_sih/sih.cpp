@@ -379,6 +379,15 @@ void Sih::configure_rotors()
 	_per_rotor = _sih_mc_expo.get() >= 0.f || _sih_t_tau_up.get() > 0.f || _sih_t_tau_dn.get() > 0.f
 		     || _sih_t_tau_stop.get() > 0.f || _sih_mc_rev_frac.get() < 1.f || fabsf(_sih_mc_rpm_max.get() - 10000.f) > 0.f;
 
+	// Positions in units of the stock roll/pitch arms; FRD body axes.
+	static constexpr float h = M_SQRT3_F / 2.f;
+	static constexpr float hex_x[] {h, 0.f, -h, -h, 0.f, h};
+	static constexpr float hex_y[] {.5f, 1.f, .5f, -.5f, -1.f, -.5f};
+	static constexpr float quad_x[] {1.f, -1.f, 1.f, -1.f};
+	static constexpr float quad_y[] {1.f, -1.f, -1.f, 1.f};
+	const bool hex = _vehicle == VehicleType::Hexacopter;
+	_has_rotor_tilt = false;
+
 	// Read indexed parameters only at startup and parameter updates, never in the dynamics loop.
 	char name[17];
 
@@ -388,7 +397,31 @@ void Sih::configure_rotors()
 		snprintf(name, sizeof(name), "SIH_ROT%d_KQ", i);
 		param_get(param_find(name), &_kq[i]);
 		_per_rotor |= fabsf(_kt[i] - 1.f) > 0.f || fabsf(_kq[i] - 1.f) > 0.f;
+
+		const Vector3f arm_shape{hex ? hex_x[i] : quad_x[i], hex ? hex_y[i] : quad_y[i], 0.f};
+		const Vector3f position{_L_PITCH * arm_shape(0), _L_ROLL * arm_shape(1), 0.f};
+		_rotor_position[i] = position;
+		_rotor_axis[i] = Vector3f{0.f, 0.f, -1.f};
+
+		float tangential_deg = 0.f;
+		float radial_deg = 0.f;
+		snprintf(name, sizeof(name), "SIH_ROT%d_TTAN", i);
+		param_get(param_find(name), &tangential_deg);
+		snprintf(name, sizeof(name), "SIH_ROT%d_TRAD", i);
+		param_get(param_find(name), &radial_deg);
+
+		if (fabsf(tangential_deg) > 0.f || fabsf(radial_deg) > 0.f) {
+			// Projected tilts from vertical. A collapsed arm retains its nominal azimuth.
+			const Vector3f radial = position.norm() > 0.f ? position.unit() : arm_shape.unit();
+			const Vector3f tangent{-radial(1), radial(0), 0.f}; // down x radial in FRD
+			const float tangent_slope = tanf(radians(constrain(tangential_deg, -89.f, 89.f)));
+			const float radial_slope = tanf(radians(constrain(radial_deg, -89.f, 89.f)));
+			_rotor_axis[i] = (_rotor_axis[i] + tangent * tangent_slope + radial * radial_slope).unit();
+			_has_rotor_tilt = true;
+		}
 	}
+
+	_per_rotor |= _has_rotor_tilt;
 
 	if (_vehicle == VehicleType::Hexacopter) {
 		for (int i = 0; i < 3; ++i) {
@@ -578,21 +611,14 @@ void Sih::publish_esc_status()
 
 void Sih::generate_rotor_wrench()
 {
-	// Positions in units of the stock roll/pitch arms; FRD body axes.
-	static constexpr float h = M_SQRT3_F / 2.f;
-	static constexpr float hex_x[] {h, 0.f, -h, -h, 0.f, h};
-	static constexpr float hex_y[] {.5f, 1.f, .5f, -.5f, -1.f, -.5f};
 	static constexpr int hex_pair[] {0, 2, 1, 0, 2, 1}; // DJI pairs 1/4, 2/5, 3/6
-	static constexpr float quad_x[] {1.f, -1.f, 1.f, -1.f};
-	static constexpr float quad_y[] {1.f, -1.f, -1.f, 1.f};
 	const bool hex = _vehicle == VehicleType::Hexacopter;
 	debug_array_s log{};
 	_T_B = Vector3f{};
 	_Mt_B = Vector3f{};
 
 	for (int i = 0; i < num_motors(); ++i) {
-		const float x = _L_PITCH * (hex ? hex_x[i] : quad_x[i]);
-		const float y = _L_ROLL * (hex ? hex_y[i] : quad_y[i]);
+		const Vector3f &position = _rotor_position[i];
 		const bool ccw = hex ? (i % 2 == 0) : i < 2;
 		const float command = _u[i];
 		const float fraction = rotor_fraction(command) * (command < 0.f ? _sih_mc_rev_frac.get() : 1.f);
@@ -600,11 +626,28 @@ void Sih::generate_rotor_wrench()
 		const float q_curve = _sih_mc_expo.get() >= 0.f ? fabsf(command) : 1.f;
 		const float reaction = (ccw ? _Q_MAX : -_Q_MAX) * _kq[i] * fraction * q_curve;
 		const float bias = hex ? _pair_arm[hex_pair[i]] * thrust : 0.f;
-		_T_B(2) -= thrust;
-		_Mt_B += Vector3f(-y * thrust, x * thrust, reaction + bias);
+		float reaction_z = reaction;
+
+		if (_has_rotor_tilt) {
+			const Vector3f &axis = _rotor_axis[i]; // points up at zero tilt
+			const Vector3f force = axis * thrust;
+			const Vector3f torque = axis * (-reaction);
+			_T_B += force;
+			_Mt_B += position.cross(force) + torque;
+			_Mt_B(2) += bias;
+			reaction_z = torque(2);
+			log.data[31 + i] = force(0); // body Fx [N]
+			log.data[37 + i] = force(1); // body Fy [N]
+
+		} else {
+			// Keep the original floating-point accumulation for upright rotors.
+			_T_B(2) -= thrust;
+			_Mt_B += Vector3f(-position(1) * thrust, position(0) * thrust, reaction + bias);
+		}
+
 		log.data[i] = thrust;
 		log.data[6 + i] = _sih_mc_rpm_max.get() * rotor_speed(command);
-		log.data[12 + i] = reaction;
+		log.data[12 + i] = reaction_z;
 		log.data[18 + i] = bias;
 		log.data[24 + i] = _rotor_target[i];
 	}

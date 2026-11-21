@@ -268,6 +268,28 @@ parameters:
       default: 1.0
       min: 0
       num_instances: 6
+    SIH_ROT${i}_TTAN:
+      description:
+        short: "Rotor ${i} tangential thrust-axis tilt"
+        long: "Positive tilts thrust clockwise in top view. Measured from vertical in the tangential plane."
+      type: float
+      default: 0.0
+      min: -89
+      max: 89
+      unit: deg
+      num_instances: 6
+      decimal: 5
+    SIH_ROT${i}_TRAD:
+      description:
+        short: "Rotor ${i} radial thrust-axis tilt"
+        long: "Positive tilts thrust away from the body origin. Measured from vertical in the radial plane."
+      type: float
+      default: 0.0
+      min: -89
+      max: 89
+      unit: deg
+      num_instances: 6
+      decimal: 5
     SIH_PAIR${i}_ARM:
       description:
         short: "Hex opposite-pair ${i} yaw arm (0 = rotors 0/3, 1 = 2/5, 2 = 4/1)"
