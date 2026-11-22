@@ -1408,7 +1408,7 @@ float P04Allocator::auto_null_shift(const float t[], const float dir[], const ui
 	// 测试人员知道换没换件）。没重跑时，偏置总量变了由过时检测兜底；偏置只换到别的机臂、
 	// 总量不变时检测不出，旧系数可能让自旋更快（Codex 第四轮：失 6 号 143 → 218 °/s）——
 	// 试飞卡写明换件后要重跑。
-	if (!_pair_map_valid || csum < 1.0e-6f) {
+	if (!_pair_map_valid || csum < 1.0e-6f || _null_stale) {
 		return _fail_null_shift;
 	}
 
@@ -2342,6 +2342,44 @@ bool P04Allocator::fail_predict_gaps(const float rem[3], const uint8_t idx[5], c
 }
 
 
+// AP_MotorsMatrix::null_coef_check. A fresh, accepted calibration clears the latch.
+void P04Allocator::reset_coefficient_check()
+{
+	_null_stale = false;
+	_ncheck_lp_init = false;
+	_ncheck_bad_s = 0.f;
+	reset_prediction();
+}
+
+void P04Allocator::check_coefficients(const float thrust[MotorCount], float dt, bool steady)
+{
+	if (_null_stale || active()) {return;}
+
+	const float csum = fabsf(_null_coef[0]) + fabsf(_null_coef[1]) + fabsf(_null_coef[2]);
+
+	if (!isfinite(csum) || csum < 1.e-6f) {return;}
+
+	if (!steady) {_ncheck_bad_s = 0.f; return;}
+
+	float yaw = 0.f, pred = 0.f;
+
+	for (unsigned i = 0; i < MotorCount; i++) {yaw += _yaw_factor[i] * thrust[i];}
+
+	for (unsigned p = 0; p < 3; p++) {pred += _null_coef[p] * (thrust[p] + thrust[p + 3]);}
+
+	if (!isfinite(yaw) || !isfinite(pred)) {return;}
+
+	if (!_ncheck_lp_init) {_ncheck_lp_init = true; _ncheck_err_lp = yaw - pred; _ncheck_pred_lp = pred;}
+
+	const float k = constrain_float(dt / 3.f, 0.f, 1.f);
+	_ncheck_err_lp += k * ((yaw - pred) - _ncheck_err_lp);
+	_ncheck_pred_lp += k * (pred - _ncheck_pred_lp);
+	const float limit_err = MAX(0.5f * fabsf(_ncheck_pred_lp), 0.02f);
+	_ncheck_bad_s = (fabsf(_ncheck_err_lp) > limit_err) ? (_ncheck_bad_s + dt) : 0.f;
+
+	if (_ncheck_bad_s >= 20.f) {_null_stale = true; reset_prediction();}
+}
+
 void P04Allocator::reset_prediction()
 {
 	_predict_s = 0.f;
@@ -2381,7 +2419,7 @@ bool P04Allocator::predict(const float thrust[MotorCount], float dt, Prediction 
 	result = {};
 	result.trim = _predict_yaw / _predict_max;
 	const float csum = fabsf(_null_coef[0]) + fabsf(_null_coef[1]) + fabsf(_null_coef[2]);
-	result.from_model = isfinite(csum) && csum >= 1e-6f;
+	result.from_model = !_null_stale && isfinite(csum) && csum >= 1e-6f;
 	float rem[3] {};
 
 	for (unsigned i = 0; i < MotorCount; i++) {

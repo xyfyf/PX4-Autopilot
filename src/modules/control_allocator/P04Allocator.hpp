@@ -73,6 +73,10 @@ public:
 		bool from_model{};
 	};
 	void reset_prediction();
+	void interrupt_coefficient_check() {_ncheck_bad_s = 0.f;}
+	void reset_coefficient_check();
+	void check_coefficients(const float thrust[MotorCount], float dt, bool steady);
+	bool coefficients_stale() const {return _null_stale;}
 	bool predict(const float thrust[MotorCount], float dt, Prediction &result);
 	bool active() const {return _failed_motor >= 0;}
 	AllocPath path() const {return _alloc_path;}
@@ -83,6 +87,8 @@ private:
 			       float csum, float &balanced, float &automatic) const;
 	float _predict_s{}, _predict_yaw{}, _predict_max{}, _predict_t[MotorCount] {};
 	bool _predicted{};
+	bool _null_stale{}, _ncheck_lp_init{};
+	float _ncheck_bad_s{}, _ncheck_err_lp{}, _ncheck_pred_lp{};
 	int _failed_motor{-1};
 	bool motor_enabled[MotorCount] {};
 	float _roll_factor[MotorCount] {}, _pitch_factor[MotorCount] {}, _yaw_factor[MotorCount] {};

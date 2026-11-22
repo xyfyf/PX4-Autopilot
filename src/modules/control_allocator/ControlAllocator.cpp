@@ -851,7 +851,7 @@ void ControlAllocator::finishP04Sequence()
 		_param_p04_null_c1.set(c[0]); _param_p04_null_c1.commit();
 		_param_p04_null_c2.set(c[1]); _param_p04_null_c2.commit();
 		_param_p04_null_c3.set(c[2]); _param_p04_null_c3.commit();
-		_p04.reset_prediction();
+		_p04.reset_coefficient_check();
 	}
 
 	debug_array_s trace{};
@@ -999,17 +999,26 @@ bool ControlAllocator::configureP04(unsigned failed)
 
 void ControlAllocator::updateP04Prediction(float dt)
 {
-	if (!_armed) {_p04.reset_prediction(); return;}
+	if (!_armed) {
+		_p04.reset_prediction();
+		_p04.interrupt_coefficient_check();
+		return;
+	}
 
 	_p04_land_sub.update(&_p04_land);
 	_p04_rate_sub.update(&_p04_rates);
 
-	if (_p04_land.landed || _param_p04_seq.get() || fabsf(_p04_rates.xyz[2]) >= math::radians(5.f)
-	    || _thrust_sp(2) >= -FLT_EPSILON || _thrust_sp(2) <= -1.f || !configureP04(6)) {return;}
+	if (!configureP04(6)) { return; }
 
 	float thrust[6];
 
 	for (unsigned i = 0; i < 6; i++) {thrust[i] = _control_allocation[0]->getActuatorSetpoint()(p04_rotor[i]);}
+
+	const bool steady = !_p04_land.landed && !_param_p04_seq.get() && fabsf(_p04_rates.xyz[2]) < math::radians(5.f)
+			    && _thrust_sp(2) < -FLT_EPSILON && _thrust_sp(2) > -1.f;
+	_p04.check_coefficients(thrust, dt, steady);
+
+	if (!steady) {return;}
 
 	P04Allocator::Prediction prediction{};
 
@@ -1046,6 +1055,12 @@ bool ControlAllocator::allocateP04(float dt, hrt_abstime now)
 		trace.id = 606;
 		strncpy(trace.name, "p04_alloc", sizeof(trace.name) - 1);
 		trace.data[0] = float(_p04.path()); trace.data[1] = _p04.shift();
+		trace.data[10] = _p04.limit.roll;
+		trace.data[11] = _p04.limit.pitch;
+		trace.data[12] = _p04.limit.yaw;
+		trace.data[13] = _p04.limit.throttle_lower;
+		trace.data[14] = _p04.limit.throttle_upper;
+		trace.data[15] = _p04.coefficients_stale();
 
 		for (unsigned i = 0; i < 4; i++) {trace.data[2 + i] = request[i]; trace.data[6 + i] = _p04.achieved(i);}
 
