@@ -432,7 +432,10 @@ ControlAllocator::Run()
 			_control_allocation[i]->setControlSetpoint(c[i]);
 
 			// Do allocation
-			_control_allocation[i]->allocate();
+			if (i != 0 || !_p04.active() || !allocateP04(dt, now)) {
+				_control_allocation[i]->allocate();
+			}
+
 			_actuator_effectiveness->allocateAuxilaryControls(dt, i, _control_allocation[i]->_actuator_sp); //flaps and spoilers
 			_actuator_effectiveness->updateSetpoint(c[i], i, _control_allocation[i]->_actuator_sp,
 								_control_allocation[i]->getActuatorMin(), _control_allocation[i]->getActuatorMax());
@@ -583,6 +586,11 @@ ControlAllocator::update_effectiveness_matrix_if_needed(EffectivenessUpdateReaso
 			// which in turn would degrade the control of the main axes that actually should and can be controlled.
 
 			ActuatorEffectiveness::EffectivenessMatrix &matrix = config.effectiveness_matrices[i];
+
+			if (_param_ca_failure_mode.get() == int(FailureMode::P04) && _param_autostart.get() == 10046) {
+				matrix.row(3) = 0.f;
+				matrix.row(4) = 0.f;
+			}
 
 			for (int n = 0; n < NUM_AXES; n++) {
 				bool all_entries_small = true;
@@ -825,11 +833,98 @@ ControlAllocator::computeOppositeMotors()
 	}
 }
 
+// SIH 10046 PX4 rotor indices in DJI M1..M6 order (zero based).
+static constexpr unsigned p04_rotor[6] = {0, 5, 4, 3, 2, 1};
+
+bool ControlAllocator::configureP04(unsigned failed)
+{
+	if (_param_autostart.get() != 10046 || _effectiveness_source_id != EffectivenessSource::MULTIROTOR
+	    || _num_actuators[0] != 6 || _num_control_allocation != 1 || failed >= 6) {
+		return false;
+	}
+
+	const auto &allocation = *_control_allocation[0];
+	const auto &b = allocation.getEffectivenessMatrix();
+	const auto &scale = allocation.getControlAllocationScale();
+	const int row[4] = {5, 0, 1, 2};
+	float units[4] {};
+
+	for (int k = 0; k < 4; k++) {
+		float peak = 0.f;
+
+		for (unsigned j = 0; j < 6; j++) {
+			if (j != failed || k == 3) {peak = math::max(peak, fabsf(b(row[k], j)));}
+		}
+
+		if (!(peak > FLT_EPSILON && scale(row[k]) > FLT_EPSILON)) {return false;}
+
+		units[k] = (k == 0 ? -1.f : 0.5f) / peak;
+		_p04_units[k] = units[k] / scale(row[k]);
+	}
+
+	unsigned dji = 0;
+
+	for (unsigned i = 0; i < 6; i++) {
+		const unsigned j = p04_rotor[i];
+		_p04.set_column(i, units[0]*b(5, j), units[1]*b(0, j), units[2]*b(1, j), units[3]*b(2, j));
+
+		if (j == failed) {dji = i;}
+	}
+
+	_p04._fail_null_auto = _param_p04_naut.get();
+	_p04._fail_null_max = _param_p04_nmax.get();
+	_p04._fail_spindown = _param_p04_spdn.get();
+	_p04._null_coef[0] = _param_p04_null_c1.get();
+	_p04._null_coef[1] = _param_p04_null_c2.get();
+	_p04._null_coef[2] = _param_p04_null_c3.get();
+	_p04.fail(dji, allocation.getActuatorSetpoint()(failed), uint32_t(hrt_absolute_time() / 1000));
+	return true;
+}
+
+bool ControlAllocator::allocateP04(float dt, hrt_abstime now)
+{
+	_p04_rate_sub.update(&_p04_rates);
+	_p04_land_sub.update(&_p04_land);
+	const float request[4] = {_p04_units[0] *_thrust_sp(2) / 5.f, _p04_units[1] *_torque_sp(0),
+				  _p04_units[2] *_torque_sp(1), _p04_units[3] *_torque_sp(2)
+				 };
+	float out[6] {};
+
+	if (!_p04.allocate(request, out, uint32_t(now / 1000), dt, _p04_rates.xyz[2], _armed && !_p04_land.landed)) {return false;}
+
+	for (unsigned i = 0; i < 6; i++) {_control_allocation[0]->_actuator_sp(p04_rotor[i]) = out[i];}
+
+	return true;
+}
+
 void
 ControlAllocator::check_for_motor_failures()
 {
 	failure_detector_status_s failure_detector_status;
 	const FailureMode failure_mode = static_cast<FailureMode>(_param_ca_failure_mode.get());
+
+	if (failure_mode == FailureMode::P04) {
+		failure_injection_s prior{};
+
+		if (_armed && !_p04.active() && _prior_sub.update(&prior)) {
+			uint16_t mask = 0;
+
+			for (unsigned k = 0; k < prior.count && k < prior.MAX_FAILURES; k++) {
+				if (prior.unit[k] == prior.FAILURE_UNIT_SYSTEM_MOTOR && prior.failure_type[k] == prior.FAILURE_TYPE_OFF) {
+					mask |= prior.instance_mask[k];
+				}
+			}
+
+			if (math::countSetBits(mask) == 1 && configureP04(math::countTrailingZeros(mask))) {
+				_handled_motor_failure_bitmask = mask;
+				_control_allocation[0]->setHadActuatorFailure(true);
+				update_effectiveness_matrix_if_needed(EffectivenessUpdateReason::MOTOR_ACTIVATION_UPDATE);
+				PX4_INFO("P04 prior mask 0x%x", mask);
+			}
+		}
+
+		return;
+	}
 
 	if ((failure_mode == FailureMode::REMOVE_AND_STOP_OPPOSITE || failure_mode == FailureMode::REMOVE_AND_REVERSE_OPPOSITE)
 	    && _failure_detector_status_sub.update(&failure_detector_status)) {

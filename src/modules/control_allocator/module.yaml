@@ -634,6 +634,57 @@ parameters:
                 0: Ignore
                 1: Remove failed motor and stop its opposite
                 2: Remove failed motor and reverse its opposite
+                3: P04 prior-informed allocation (10046 E616F SIH)
+            default: 0
+
+        CA_P04_NAUT:
+            description:
+                short: Automatic load placement
+            type: enum
+            values:
+                0: Disabled
+                1: Identified feedforward
+                2: Feedforward and yaw rate correction
+            default: 0
+
+        CA_P04_NMAX:
+            description:
+                short: Maximum automatic load shift
+            type: float
+            min: 0
+            max: 0.9
+            default: 0.75
+
+        CA_P04_SPDN:
+            description:
+                short: Coasting rotor thrust time constant
+            type: float
+            min: 0
+            max: 5
+            default: 0.54
+
+        CA_P04_NULL_C1:
+            description:
+                short: P04 standing yaw coefficient for DJI opposite pair 1
+            type: float
+            min: -10
+            max: 10
+            default: 0
+
+        CA_P04_NULL_C2:
+            description:
+                short: P04 standing yaw coefficient for DJI opposite pair 2
+            type: float
+            min: -10
+            max: 10
+            default: 0
+
+        CA_P04_NULL_C3:
+            description:
+                short: P04 standing yaw coefficient for DJI opposite pair 3
+            type: float
+            min: -10
+            max: 10
             default: 0
 
         CA_ICE_PERIOD:

@@ -138,6 +138,8 @@ public:
 	 */
 	const matrix::Vector<float, NUM_AXES> &getControlSetpoint() const { return _control_sp; }
 
+	const matrix::Vector<float, NUM_AXES> &getControlAllocationScale() const { return _control_allocation_scale; }
+
 	/**
 	 * Get the allocated control vector
 	 *

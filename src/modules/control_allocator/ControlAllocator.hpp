@@ -40,6 +40,10 @@
  */
 
 #pragma once
+#include "P04Allocator.hpp"
+#include <uORB/topics/failure_injection.h>
+#include <uORB/topics/vehicle_angular_velocity.h>
+#include <uORB/topics/vehicle_land_detected.h>
 
 #include <ActuatorEffectiveness.hpp>
 #include <ActuatorEffectivenessMultirotor.hpp>
@@ -183,6 +187,7 @@ private:
 	};
 
 	enum class FailureMode {
+		P04 = 3,
 		IGNORE = 0,
 		REMOVE_AND_STOP_OPPOSITE = 1,     ///< remove failed motor; on a hexarotor also stop its geometric opposite
 		REMOVE_AND_REVERSE_OPPOSITE = 2,  ///< remove failed motor; on a hexarotor reverse its geometric opposite
@@ -219,6 +224,15 @@ private:
 
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 	uORB::Subscription _vehicle_control_mode_sub{ORB_ID(vehicle_control_mode)};
+	bool configureP04(unsigned failed);
+	bool allocateP04(float dt, hrt_abstime now);
+	P04Allocator _p04{};
+	float _p04_units[4] {};
+	uORB::Subscription _prior_sub{ORB_ID(failure_injection)};
+	uORB::Subscription _p04_rate_sub{ORB_ID(vehicle_angular_velocity)};
+	uORB::Subscription _p04_land_sub{ORB_ID(vehicle_land_detected)};
+	vehicle_land_detected_s _p04_land{};
+	vehicle_angular_velocity_s _p04_rates{};
 	uORB::Subscription _failure_detector_status_sub{ORB_ID(failure_detector_status)};
 
 	matrix::Vector3f _torque_sp;
@@ -253,6 +267,13 @@ private:
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::CA_AIRFRAME>) _param_ca_airframe,
 		(ParamInt<px4::params::CA_METHOD>) _param_ca_method,
+		(ParamInt<px4::params::SYS_AUTOSTART>) _param_autostart,
+		(ParamInt<px4::params::CA_P04_NAUT>) _param_p04_naut,
+		(ParamFloat<px4::params::CA_P04_NMAX>) _param_p04_nmax,
+		(ParamFloat<px4::params::CA_P04_SPDN>) _param_p04_spdn,
+		(ParamFloat<px4::params::CA_P04_NULL_C1>) _param_p04_null_c1,
+		(ParamFloat<px4::params::CA_P04_NULL_C2>) _param_p04_null_c2,
+		(ParamFloat<px4::params::CA_P04_NULL_C3>) _param_p04_null_c3,
 		(ParamInt<px4::params::CA_FAILURE_MODE>) _param_ca_failure_mode,
 		(ParamInt<px4::params::CA_R_REV>) _param_r_rev,
 		(ParamFloat<px4::params::CA_REV_THR_FRAC>) _param_ca_rev_thr_frac,
