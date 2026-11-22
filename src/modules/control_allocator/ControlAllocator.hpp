@@ -41,6 +41,7 @@
 
 #pragma once
 #include "P04Allocator.hpp"
+#include <uORB/topics/debug_array.h>
 #include <uORB/topics/failure_injection.h>
 #include <uORB/topics/vehicle_angular_velocity.h>
 #include <uORB/topics/vehicle_land_detected.h>
@@ -224,6 +225,12 @@ private:
 
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 	uORB::Subscription _vehicle_control_mode_sub{ORB_ID(vehicle_control_mode)};
+	void updateP04Prediction(float dt);
+	void applyP04Sequence(float dt, hrt_abstime now);
+	uORB::Publication<debug_array_s> _p04_debug_pub{ORB_ID(debug_array)};
+	hrt_abstime _p04_seq_start{}, _p04_debug_time{};
+	unsigned _p04_pair{};
+	float _p04_delta{};
 	bool configureP04(unsigned failed);
 	bool allocateP04(float dt, hrt_abstime now);
 	P04Allocator _p04{};
@@ -268,6 +275,7 @@ private:
 		(ParamInt<px4::params::CA_AIRFRAME>) _param_ca_airframe,
 		(ParamInt<px4::params::CA_METHOD>) _param_ca_method,
 		(ParamInt<px4::params::SYS_AUTOSTART>) _param_autostart,
+		(ParamBool<px4::params::CA_P04_SEQ>) _param_p04_seq,
 		(ParamInt<px4::params::CA_P04_NAUT>) _param_p04_naut,
 		(ParamFloat<px4::params::CA_P04_NMAX>) _param_p04_nmax,
 		(ParamFloat<px4::params::CA_P04_SPDN>) _param_p04_spdn,

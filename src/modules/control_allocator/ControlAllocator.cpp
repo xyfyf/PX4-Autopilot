@@ -442,6 +442,12 @@ ControlAllocator::Run()
 
 			if (i == 0) {
 				// The motors are always in allocation 0
+				if (_param_p04_seq.get() || _p04_seq_start) {applyP04Sequence(dt, now);}
+
+				if (_param_ca_failure_mode.get() == int(FailureMode::P04) && !_p04.active() && _param_autostart.get() == 10046) {
+					updateP04Prediction(dt);
+				}
+
 				handle_stopped_motors(now);
 			}
 
@@ -836,10 +842,67 @@ ControlAllocator::computeOppositeMotors()
 // SIH 10046 PX4 rotor indices in DJI M1..M6 order (zero based).
 static constexpr unsigned p04_rotor[6] = {0, 5, 4, 3, 2, 1};
 
+void ControlAllocator::applyP04Sequence(float dt, hrt_abstime now)
+{
+	_p04_land_sub.update(&_p04_land);
+
+	if (!_param_p04_seq.get() || !_armed || _p04_land.landed || _p04.active()
+	    || _param_autostart.get() != 10046 || _param_ca_failure_mode.get() != int(FailureMode::P04)
+	    || _num_actuators[0] != 6 || (_p04_seq_start && now - _p04_seq_start >= 120_s)) {
+		_p04_seq_start = 0;
+		_p04_delta = 0.f;
+
+		if (_param_p04_seq.get()) {_param_p04_seq.set(false); _param_p04_seq.commit();}
+
+		return;
+	}
+
+	if (!_p04_seq_start) {_p04_seq_start = now;}
+
+	const unsigned stage = (now - _p04_seq_start) / 15_s;
+	constexpr unsigned pairs[8] = {0, 0, 0, 1, 1, 2, 2, 0};
+	constexpr float amplitude[8] = {0, 0.08f, -0.08f, 0.08f, -0.08f, 0.08f, -0.08f, 0};
+	float target = amplitude[stage];
+
+	if (pairs[stage] != _p04_pair) {
+		if (fabsf(_p04_delta) < FLT_EPSILON) {_p04_pair = pairs[stage];}
+
+		else {target = 0.f;}
+	}
+
+	_p04_delta += math::constrain(target - _p04_delta, -0.2f * dt, 0.2f * dt);
+	constexpr unsigned pair_up[3] = {0, 0, 1}, pair_down[3] = {1, 2, 2};
+	auto &out = _control_allocation[0]->_actuator_sp;
+	float delta = _p04_delta;
+
+	for (unsigned j = 0; j < 6; j += 3) {
+		const float up = out(p04_rotor[pair_up[_p04_pair] + j]), down = out(p04_rotor[pair_down[_p04_pair] + j]);
+		delta = math::constrain(delta, -math::min(up, 1.f - down), math::min(1.f - up, down));
+	}
+
+	for (unsigned j = 0; j < 6; j += 3) {
+		out(p04_rotor[pair_up[_p04_pair] + j]) += delta;
+		out(p04_rotor[pair_down[_p04_pair] + j]) -= delta;
+	}
+
+	if (now - _p04_debug_time >= 20_ms) {
+		debug_array_s trace{};
+		trace.timestamp = now; trace.id = 604;
+		strncpy(trace.name, "p04_seq", sizeof(trace.name) - 1);
+		trace.data[0] = float(stage); trace.data[1] = float(now - _p04_seq_start) * 1e-6f;
+		trace.data[2] = delta;
+
+		for (unsigned i = 0; i < 6; i++) {trace.data[3 + i] = out(p04_rotor[i]);}
+
+		_p04_debug_pub.publish(trace);
+		_p04_debug_time = now;
+	}
+}
+
 bool ControlAllocator::configureP04(unsigned failed)
 {
 	if (_param_autostart.get() != 10046 || _effectiveness_source_id != EffectivenessSource::MULTIROTOR
-	    || _num_actuators[0] != 6 || _num_control_allocation != 1 || failed >= 6) {
+	    || _num_actuators[0] != 6 || _num_control_allocation != 1 || failed > 6) {
 		return false;
 	}
 
@@ -877,8 +940,40 @@ bool ControlAllocator::configureP04(unsigned failed)
 	_p04._null_coef[0] = _param_p04_null_c1.get();
 	_p04._null_coef[1] = _param_p04_null_c2.get();
 	_p04._null_coef[2] = _param_p04_null_c3.get();
-	_p04.fail(dji, allocation.getActuatorSetpoint()(failed), uint32_t(hrt_absolute_time() / 1000));
+
+	if (failed < 6) {_p04.fail(dji, allocation.getActuatorSetpoint()(failed), uint32_t(hrt_absolute_time() / 1000));}
+
 	return true;
+}
+
+void ControlAllocator::updateP04Prediction(float dt)
+{
+	if (!_armed) {_p04.reset_prediction(); return;}
+
+	_p04_land_sub.update(&_p04_land);
+	_p04_rate_sub.update(&_p04_rates);
+
+	if (_p04_land.landed || _param_p04_seq.get() || fabsf(_p04_rates.xyz[2]) >= math::radians(5.f)
+	    || _thrust_sp(2) >= -FLT_EPSILON || _thrust_sp(2) <= -1.f || !configureP04(6)) {return;}
+
+	float thrust[6];
+
+	for (unsigned i = 0; i < 6; i++) {thrust[i] = _control_allocation[0]->getActuatorSetpoint()(p04_rotor[i]);}
+
+	P04Allocator::Prediction prediction{};
+
+	if (_p04.predict(thrust, dt, prediction)) {
+		debug_array_s trace{};
+		trace.timestamp = hrt_absolute_time();
+		trace.id = 605;
+		strncpy(trace.name, "p04_mfpr", sizeof(trace.name) - 1);
+		trace.data[0] = prediction.trim; trace.data[1] = prediction.from_model; trace.data[2] = prediction.risk_mask;
+
+		for (unsigned i = 0; i < 6; i++) {trace.data[3 + i] = prediction.balanced[i]; trace.data[9 + i] = prediction.automatic[i];}
+
+		_p04_debug_pub.publish(trace);
+		PX4_INFO("P04 prediction source %u risk mask 0x%x", unsigned(prediction.from_model), prediction.risk_mask);
+	}
 }
 
 bool ControlAllocator::allocateP04(float dt, hrt_abstime now)
@@ -893,6 +988,19 @@ bool ControlAllocator::allocateP04(float dt, hrt_abstime now)
 	if (!_p04.allocate(request, out, uint32_t(now / 1000), dt, _p04_rates.xyz[2], _armed && !_p04_land.landed)) {return false;}
 
 	for (unsigned i = 0; i < 6; i++) {_control_allocation[0]->_actuator_sp(p04_rotor[i]) = out[i];}
+
+	if (now - _p04_debug_time >= 100_ms) {
+		debug_array_s trace{};
+		trace.timestamp = now;
+		trace.id = 606;
+		strncpy(trace.name, "p04_alloc", sizeof(trace.name) - 1);
+		trace.data[0] = float(_p04.path()); trace.data[1] = _p04.shift();
+
+		for (unsigned i = 0; i < 4; i++) {trace.data[2 + i] = request[i]; trace.data[6 + i] = _p04.achieved(i);}
+
+		_p04_debug_pub.publish(trace);
+		_p04_debug_time = now;
+	}
 
 	return true;
 }
@@ -915,7 +1023,7 @@ ControlAllocator::check_for_motor_failures()
 				}
 			}
 
-			if (math::countSetBits(mask) == 1 && configureP04(math::countTrailingZeros(mask))) {
+			if (math::countSetBits(mask) == 1 && mask < (1u << 6) && configureP04(math::countTrailingZeros(mask))) {
 				_handled_motor_failure_bitmask = mask;
 				_control_allocation[0]->setHadActuatorFailure(true);
 				update_effectiveness_matrix_if_needed(EffectivenessUpdateReason::MOTOR_ACTIVATION_UPDATE);

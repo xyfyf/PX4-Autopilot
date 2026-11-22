@@ -2284,3 +2284,132 @@ bool P04Allocator::allocate(const float request[4], float out[MotorCount], uint3
 	set_limits_from_allocation(d, false, out);
 	return true;
 }
+
+bool P04Allocator::fail_predict_gaps(const float rem[3], const uint8_t idx[5], const int8_t pair_of[],
+				     float csum, float &balanced, float &automatic) const
+{
+	float geom[5], coef[5], dir[MotorCount];
+
+	for (uint8_t k = 0; k < 5; k++) {
+		geom[k] = _yaw_factor[idx[k]];
+		coef[k] = _null_coef[pair_of[idx[k]]];
+	}
+
+	float lo, hi, vertices[2][5];
+
+	if (!alloc_yaw_extremes(rem, idx, 5, &lo, &hi, vertices[0], vertices[1], geom) ||
+	    !yaw_null_direction(idx, 5, dir)) {
+		return false;
+	}
+
+	float gain = 0.0f;
+
+	for (uint8_t k = 0; k < 5; k++) {
+		gain += coef[k] * dir[k];
+	}
+
+	// yaw_null_direction normalises the largest absolute component to one.
+	const bool usable = fabsf(gain) >= AP_MOTORS_NAUT_GAIN_MIN * csum;
+	const float cap = constrain_float(_fail_null_max, 0.0f, 0.9f);
+	const float margin = AP_MOTORS_NAUT_OUT_MARGIN * MAX(hi - lo, 1.0e-3f);
+	float qbal[2], qmin = FLT_MAX, qmax = -FLT_MAX;
+
+	for (uint8_t end = 0; end < 2; end++) {
+		const float *t = vertices[end];
+		float a, amin, amax;
+
+		if (!null_line_range(t, dir, 5, a, amin, amax)) {
+			return false;
+		}
+
+		float q = end == 0 ? lo : hi;
+
+		for (uint8_t k = 0; k < 5; k++) {
+			q -= coef[k] * (t[k] + a * dir[k]);
+		}
+
+		qbal[end] = q;
+		const bool engage = usable && (end == 0 ? q > margin : q < -margin);
+		const float q1 = engage ? q - gain * cap * (amin - a) : q;
+		const float q2 = engage ? q - gain * cap * (amax - a) : q;
+		qmin = MIN(qmin, MIN(q1, q2));
+		qmax = MAX(qmax, MAX(q1, q2));
+	}
+
+	balanced = MAX(MIN(qbal[0], qbal[1]), -MAX(qbal[0], qbal[1]));
+	automatic = MAX(qmin, -qmax);
+	return isfinite(balanced) && isfinite(automatic);
+}
+
+
+void P04Allocator::reset_prediction()
+{
+	_predict_s = 0.f;
+	_predicted = false;
+}
+
+bool P04Allocator::predict(const float thrust[MotorCount], float dt, Prediction &result)
+{
+	if (_predicted || active()) {return false;}
+
+	float yaw = 0.f, max_yaw = 0.f;
+
+	for (unsigned i = 0; i < MotorCount; i++) {
+		yaw += _yaw_factor[i] * thrust[i];
+		max_yaw += fabsf(_yaw_factor[i]) * thrust[i];
+	}
+
+	if (!isfinite(yaw) || !(max_yaw > 1e-3f)) {return false;}
+
+	if (is_zero(_predict_s)) {
+		memcpy(_predict_t, thrust, sizeof(_predict_t));
+		_predict_yaw = yaw;
+		_predict_max = max_yaw;
+	}
+
+	const float k = constrain_float(dt / 3.f, 0.f, 1.f);
+	_predict_yaw += k * (yaw - _predict_yaw);
+	_predict_max += k * (max_yaw - _predict_max);
+
+	for (unsigned i = 0; i < MotorCount; i++) {_predict_t[i] += k * (thrust[i] - _predict_t[i]);}
+
+	_predict_s += dt;
+
+	if (_predict_s < 15.f) {return false;}
+
+	_predicted = true;
+	result = {};
+	result.trim = _predict_yaw / _predict_max;
+	const float csum = fabsf(_null_coef[0]) + fabsf(_null_coef[1]) + fabsf(_null_coef[2]);
+	result.from_model = isfinite(csum) && csum >= 1e-6f;
+	float rem[3] {};
+
+	for (unsigned i = 0; i < MotorCount; i++) {
+		rem[0] += _throttle_factor[i] * _predict_t[i];
+		rem[1] += _roll_factor[i] * _predict_t[i];
+		rem[2] += _pitch_factor[i] * _predict_t[i];
+	}
+
+	for (unsigned j = 0; j < MotorCount; j++) {
+		bool risk = false;
+
+		if (result.from_model) {
+			uint8_t idx[5], n = 0;
+
+			for (uint8_t i = 0; i < MotorCount; i++) {if (i != j) {idx[n++] = i;}}
+
+			if (!fail_predict_gaps(rem, idx, _pair_of, csum, result.balanced[j], result.automatic[j])) {
+				result.balanced[j] = result.automatic[j] = 1.f;
+			}
+
+			risk = (_fail_null_auto ? result.automatic[j] : result.balanced[j]) > 0.02f * _predict_max;
+
+		} else {
+			risk = fabsf(result.trim) >= 0.1f && _yaw_factor[j] * result.trim > 0.f;
+		}
+
+		if (risk) {result.risk_mask |= 1u << j;}
+	}
+
+	return true;
+}

@@ -637,6 +637,13 @@ parameters:
                 3: P04 prior-informed allocation (10046 E616F SIH)
             default: 0
 
+        CA_P04_SEQ:
+            description:
+                short: Start E616F healthy hover calibration
+                long: Run the eight 15 second P04 opposite-pair excitation segments. Set in stable flight.
+            type: boolean
+            default: 0
+
         CA_P04_NAUT:
             description:
                 short: Automatic load placement

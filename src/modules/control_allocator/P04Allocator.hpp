@@ -67,11 +67,22 @@ public:
 	};
 
 	struct Limits { bool roll{}, pitch{}, yaw{}, throttle_lower{}, throttle_upper{}; } limit{};
+	struct Prediction {
+		float trim{}, balanced[MotorCount] {}, automatic[MotorCount] {};
+		unsigned risk_mask{};
+		bool from_model{};
+	};
+	void reset_prediction();
+	bool predict(const float thrust[MotorCount], float dt, Prediction &result);
 	bool active() const {return _failed_motor >= 0;}
 	AllocPath path() const {return _alloc_path;}
 	float shift() const {return _nauto_out;}
 	float achieved(unsigned row) const {return _alloc_achieved[row];}
 private:
+	bool fail_predict_gaps(const float rem[3], const uint8_t idx[5], const int8_t pair_of[],
+			       float csum, float &balanced, float &automatic) const;
+	float _predict_s{}, _predict_yaw{}, _predict_max{}, _predict_t[MotorCount] {};
+	bool _predicted{};
 	int _failed_motor{-1};
 	bool motor_enabled[MotorCount] {};
 	float _roll_factor[MotorCount] {}, _pitch_factor[MotorCount] {}, _yaw_factor[MotorCount] {};
