@@ -42,6 +42,7 @@ px4_add_module(
 	STACK_MAIN
 		3000
 	SRCS
+		P04Identification.cpp
 		P04Allocator.cpp
 		ControlAllocator.cpp
 		ControlAllocator.hpp

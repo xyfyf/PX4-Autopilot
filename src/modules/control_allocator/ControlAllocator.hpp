@@ -41,6 +41,7 @@
 
 #pragma once
 #include "P04Allocator.hpp"
+#include "P04Identification.hpp"
 #include <uORB/topics/debug_array.h>
 #include <uORB/topics/failure_injection.h>
 #include <uORB/topics/vehicle_angular_velocity.h>
@@ -225,6 +226,8 @@ private:
 
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 	uORB::Subscription _vehicle_control_mode_sub{ORB_ID(vehicle_control_mode)};
+	P04Identification _p04_identification{};
+	void finishP04Sequence();
 	void updateP04Prediction(float dt);
 	void applyP04Sequence(float dt, hrt_abstime now);
 	uORB::Publication<debug_array_s> _p04_debug_pub{ORB_ID(debug_array)};

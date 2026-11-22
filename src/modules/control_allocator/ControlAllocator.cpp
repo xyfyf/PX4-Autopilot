@@ -842,6 +842,30 @@ ControlAllocator::computeOppositeMotors()
 // SIH 10046 PX4 rotor indices in DJI M1..M6 order (zero based).
 static constexpr unsigned p04_rotor[6] = {0, 5, 4, 3, 2, 1};
 
+void ControlAllocator::finishP04Sequence()
+{
+	float c[3] {};
+	const auto result = _p04_identification.fit(c);
+
+	if (result != P04Identification::Result::Rejected) {
+		_param_p04_null_c1.set(c[0]); _param_p04_null_c1.commit();
+		_param_p04_null_c2.set(c[1]); _param_p04_null_c2.commit();
+		_param_p04_null_c3.set(c[2]); _param_p04_null_c3.commit();
+		_p04.reset_prediction();
+	}
+
+	debug_array_s trace{};
+	trace.id = 607;
+	trace.timestamp = hrt_absolute_time();
+	strncpy(trace.name, "p04_fit", sizeof(trace.name) - 1);
+	trace.data[0] = float(result);
+
+	for (unsigned p = 0; p < 3; p++) {trace.data[p + 1] = c[p];}
+
+	_p04_debug_pub.publish(trace);
+	PX4_INFO("P04 fit %u: %.6f %.6f %.6f", unsigned(result), double(c[0]), double(c[1]), double(c[2]));
+}
+
 void ControlAllocator::applyP04Sequence(float dt, hrt_abstime now)
 {
 	_p04_land_sub.update(&_p04_land);
@@ -849,6 +873,10 @@ void ControlAllocator::applyP04Sequence(float dt, hrt_abstime now)
 	if (!_param_p04_seq.get() || !_armed || _p04_land.landed || _p04.active()
 	    || _param_autostart.get() != 10046 || _param_ca_failure_mode.get() != int(FailureMode::P04)
 	    || _num_actuators[0] != 6 || (_p04_seq_start && now - _p04_seq_start >= 120_s)) {
+		if (_param_p04_seq.get() && _p04_seq_start && now - _p04_seq_start >= 120_s && _armed && !_p04.active() && !_p04_land.landed) {
+			finishP04Sequence();
+		}
+
 		_p04_seq_start = 0;
 		_p04_delta = 0.f;
 
@@ -857,7 +885,7 @@ void ControlAllocator::applyP04Sequence(float dt, hrt_abstime now)
 		return;
 	}
 
-	if (!_p04_seq_start) {_p04_seq_start = now;}
+	if (!_p04_seq_start) {_p04_seq_start = now; _p04_identification = {};}
 
 	const unsigned stage = (now - _p04_seq_start) / 15_s;
 	constexpr unsigned pairs[8] = {0, 0, 0, 1, 1, 2, 2, 0};
@@ -883,6 +911,29 @@ void ControlAllocator::applyP04Sequence(float dt, hrt_abstime now)
 	for (unsigned j = 0; j < 6; j += 3) {
 		out(p04_rotor[pair_up[_p04_pair] + j]) += delta;
 		out(p04_rotor[pair_down[_p04_pair] + j]) -= delta;
+	}
+
+	_p04_rate_sub.update(&_p04_rates);
+	const bool steady = fabsf(_p04_rates.xyz[0]) < math::radians(10.f) && fabsf(_p04_rates.xyz[1]) < math::radians(10.f)
+			    && fabsf(_p04_rates.xyz[2]) < math::radians(5.f);
+
+	if ((now - _p04_seq_start) % 15_s >= 8_s && steady) {
+		const auto &b = _control_allocation[0]->getEffectivenessMatrix();
+		float yaw = 0.f, peak = 0.f, pairs_total[3] {};
+		bool limited = false;
+
+		for (unsigned i = 0; i < 6; i++) {
+			const unsigned j = p04_rotor[i];
+			const float thrust = out(j);
+			limited |= !(thrust > 0.f && thrust < 1.f);
+			pairs_total[i % 3] += thrust;
+			yaw += b(2, j) * thrust;
+			peak = math::max(peak, fabsf(b(2, j)));
+		}
+
+		if (!limited && peak > FLT_EPSILON) {
+			_p04_identification.accumulate(stage, dt, pairs_total, 0.5f * yaw / peak, delta);
+		}
 	}
 
 	if (now - _p04_debug_time >= 20_ms) {
