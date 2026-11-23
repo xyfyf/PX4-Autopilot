@@ -685,6 +685,12 @@ ControlAllocator::publish_control_allocator_status(int matrix_index)
 	control_allocator_status.unallocated_torque[0] = unallocated_control(0);
 	control_allocator_status.unallocated_torque[1] = unallocated_control(1);
 	control_allocator_status.unallocated_torque[2] = unallocated_control(2);
+
+	if (matrix_index == 0 && _p04.active() && _p04.yaw_authority().net && fabsf(_p04_units[3]) > FLT_EPSILON) {
+		const auto &yaw = _p04.yaw_authority();
+		control_allocator_status.unallocated_torque[2] = (yaw.request - yaw.achieved) / _p04_units[3];
+	}
+
 	control_allocator_status.unallocated_thrust[0] = unallocated_control(3);
 	control_allocator_status.unallocated_thrust[1] = unallocated_control(4);
 	control_allocator_status.unallocated_thrust[2] = unallocated_control(5);
@@ -851,6 +857,8 @@ void ControlAllocator::finishP04Sequence()
 		_param_p04_null_c1.set(c[0]); _param_p04_null_c1.commit();
 		_param_p04_null_c2.set(c[1]); _param_p04_null_c2.commit();
 		_param_p04_null_c3.set(c[2]); _param_p04_null_c3.commit();
+		_param_p04_st.set(static_cast<int32_t>(result));
+		_param_p04_st.commit();
 		_p04.reset_coefficient_check();
 	}
 
@@ -992,7 +1000,21 @@ bool ControlAllocator::configureP04(unsigned failed)
 	_p04._null_coef[1] = _param_p04_null_c2.get();
 	_p04._null_coef[2] = _param_p04_null_c3.get();
 
-	if (failed < 6) {_p04.fail(dji, allocation.getActuatorSetpoint()(failed), uint32_t(hrt_absolute_time() / 1000));}
+	const int scheme = _param_p04_yalloc.get();
+	_p04._vendor_vertices = scheme == 1;
+	_p04._fail_yaw_null = scheme == 1 ? 0 : (scheme == 2 ? 3 : (scheme == 3 ? 4 : 1));
+	_p04._null_status = _param_p04_st.get();
+
+	if (failed < 6) {
+		float healthy[6];
+
+		for (unsigned i = 0; i < 6; i++) {
+			healthy[i] = allocation.getActuatorSetpoint()(p04_rotor[i]);
+		}
+
+		_p04.set_healthy_thrust(healthy);
+		_p04.fail(dji, healthy[dji], uint32_t(hrt_absolute_time() / 1000));
+	}
 
 	return true;
 }
@@ -1061,6 +1083,8 @@ bool ControlAllocator::allocateP04(float dt, hrt_abstime now)
 		trace.data[13] = _p04.limit.throttle_lower;
 		trace.data[14] = _p04.limit.throttle_upper;
 		trace.data[15] = _p04.coefficients_stale();
+		trace.data[16] = _p04.yaw_authority().weight;
+		trace.data[17] = _p04._null_status;
 
 		for (unsigned i = 0; i < 4; i++) {trace.data[2 + i] = request[i]; trace.data[6 + i] = _p04.achieved(i);}
 

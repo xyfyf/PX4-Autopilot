@@ -279,6 +279,8 @@ private:
 		(ParamInt<px4::params::CA_METHOD>) _param_ca_method,
 		(ParamInt<px4::params::SYS_AUTOSTART>) _param_autostart,
 		(ParamBool<px4::params::CA_P04_SEQ>) _param_p04_seq,
+		(ParamInt<px4::params::CA_P04_ST>) _param_p04_st,
+		(ParamInt<px4::params::CA_P04_YALLOC>) _param_p04_yalloc,
 		(ParamInt<px4::params::CA_P04_NAUT>) _param_p04_naut,
 		(ParamFloat<px4::params::CA_P04_NMAX>) _param_p04_nmax,
 		(ParamFloat<px4::params::CA_P04_SPDN>) _param_p04_spdn,

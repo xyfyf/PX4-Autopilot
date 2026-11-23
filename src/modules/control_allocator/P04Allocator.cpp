@@ -1215,7 +1215,7 @@ static float alloc_det4(const float m[4][4])
 // 沿它移动，四个量一个都不变，只改推力在电机之间的分配。用余子式展开求，
 // 定长运算、无迭代。n != 5 时返回 false（自由度不止一维，本函数不适用）。
 bool P04Allocator::yaw_null_direction(const uint8_t idx[], uint8_t n,
-				      float dir[MotorCount]) const
+				      float dir[MotorCount], const float yaw_w[]) const
 {
 	if (n != 5) {
 		return false;
@@ -1232,7 +1232,7 @@ bool P04Allocator::yaw_null_direction(const uint8_t idx[], uint8_t n,
 		M[0][k] = _throttle_factor[i];
 		M[1][k] = _roll_factor[i];
 		M[2][k] = _pitch_factor[i];
-		M[3][k] = (_failed_motor >= 0) ? _yaw_geom[i] : _yaw_factor[i];
+		M[3][k] = yaw_w ? yaw_w[k] : ((_failed_motor >= 0) ? _yaw_geom[i] : _yaw_factor[i]);
 	}
 
 	float biggest = 0.0f;
@@ -1629,7 +1629,7 @@ void P04Allocator::apply_yaw_projection_core(const float demand[4],
 					     0.0f, 1.0f);
 	}
 
-	if (n == 5) {
+	if (!_vendor_vertices && n == 5) {
 		float dir[MotorCount] {};
 
 		if (yaw_null_direction(idx, n, dir)) {
@@ -1680,11 +1680,129 @@ bool P04Allocator::projection_keeps_rows(const float rem[3], const uint8_t idx[]
 // 偏航投影改变了推力，求解器在投影前算出的触限掩码就不再描述最终输出。
 // 2026-10-09 Codex 复核指出：日志 AYaw 对应最终解而 Clp 对应投影前的解，
 // 不能用 Clp=0 推断最终电机未饱和。这里按最终推力重算，与求解器活动集不同时记一位。
+// Evaluate net yaw only after the geometric allocation has committed. The latter
+// remains feasible if identification, reserve or the conservative gain check fails.
+void P04Allocator::apply_identified_yaw(const float demand[4], float thrust[]) const
+{
+	const bool guarded = _fail_yaw_null == 4;
+
+	if ((!guarded && _fail_yaw_null != 3) || !_yaw_auth.exact || !_pair_map_valid ||
+	    _null_stale || _null_status != 1 || _failed_motor < 0) {
+		return;
+	}
+
+	float c[3], bias = 0.0f, magnitude = 0.0f;
+
+	for (uint8_t p = 0; p < 3; p++) {
+		c[p] = _null_coef[p];
+		bias += c[p] * _healthy_pair_sum[p];
+		magnitude += fabsf(c[p]);
+	}
+
+	if (!isfinite(bias) || !isfinite(magnitude) || magnitude < 1.e-6f) {
+		return;
+	}
+
+	const float offset = bias - c[_pair_of[_failed_motor]] * _spdn_resid;
+	uint8_t idx[5], n = 0;
+	float w[5], base_peak = 0.0f, base_yaw = offset;
+
+	for (uint8_t i = 0; i < MotorCount; i++) {
+		if (motor_enabled[i]) {
+			if (n >= 5 || _pair_of[i] < 0 || _pair_of[i] > 2) {
+				return;
+			}
+
+			idx[n] = i;
+			w[n] = _yaw_geom[i] - c[_pair_of[i]];
+			base_yaw += w[n] * thrust[i];
+			base_peak = MAX(base_peak, thrust[i]);
+			n++;
+		}
+	}
+
+	float dir[MotorCount];
+	const float cap = guarded ? 0.94f : 1.0f;
+
+	if (n != 5 || !isfinite(offset) || (guarded && base_peak >= cap) || !yaw_null_direction(idx, n, dir, w)) {
+		return;
+	}
+
+	// x=t/cap has a unit box. The top 6% of thrust is reserved for the
+	// primary axes; a geometric solution needing that reserve takes priority.
+	const float rem[3] = {demand[0] *n, demand[1], demand[2]};
+	const float scaled[3] = {rem[0] / cap, rem[1] / cap, rem[2] / cap};
+	float lo, hi, low[5], high[5];
+
+	if (!alloc_yaw_extremes(scaled, idx, n, &lo, &hi, low, high, w)) {
+		return;
+	}
+
+	lo *= cap;
+	hi *= cap;
+	const float request = demand[3] - offset;
+	const float target = constrain_float(request, lo, hi);
+	const float fraction = hi - lo < 1.e-9f ? 0.0f : constrain_float((target - lo) / (hi - lo), 0.0f, 1.0f);
+	float candidate[5];
+
+	for (uint8_t k = 0; k < n; k++) {
+		candidate[k] = constrain_float(low[k] * (1.0f - fraction) + high[k] * fraction, 0.0f, 1.0f);
+	}
+
+	balance_load_on_null_line(candidate, dir, n, 0.0f);
+	float pair_change[3] {};
+
+	for (uint8_t k = 0; k < n; k++) {
+		candidate[k] *= cap;
+		pair_change[_pair_of[idx[k]]] += candidate[k] - thrust[idx[k]];
+	}
+
+	float weight = 1.0f;
+
+	if (guarded) {
+		float gain = fabsf(demand[3] - base_yaw) - fabsf(request - target);
+
+		for (uint8_t p = 0; p < 3; p++) {
+			gain -= 0.30f * fabsf(c[p] * pair_change[p]);
+		}
+
+		weight = MIN(constrain_float((gain - 0.01f) / 0.03f, 0.0f, 1.0f),
+			     constrain_float((cap - base_peak) / 0.02f, 0.0f, 1.0f));
+
+		if (weight <= 0.0f) {
+			return;
+		}
+
+		for (uint8_t k = 0; k < n; k++) {
+			candidate[k] = thrust[idx[k]] + weight * (candidate[k] - thrust[idx[k]]);
+		}
+	}
+
+	if (!projection_keeps_rows(rem, idx, n, thrust, candidate)) {
+		return;
+	}
+
+	for (uint8_t k = 0; k < n; k++) {
+		thrust[idx[k]] = candidate[k];
+	}
+
+	_yaw_auth.net = true;
+	_yaw_auth.offset = offset;
+	_yaw_auth.weight = weight;
+	_yaw_auth.lo = offset + lo;
+	_yaw_auth.hi = offset + hi;
+	_yaw_auth.target = weight < 1.0f ? base_yaw + weight * (offset + target - base_yaw) : offset + target;
+	_yaw_auth.exact = weight >= 1.0f;
+	_yaw_auth.clipped_low = request < lo;
+	_yaw_auth.clipped_high = request > hi;
+}
+
 void P04Allocator::apply_yaw_projection(const float demand[4],
 					float thrust[MotorCount]) const
 {
 	const uint8_t solver_mask = _alloc_clamp_mask;
 	apply_yaw_projection_core(demand, thrust);
+	apply_identified_yaw(demand, thrust);
 	uint8_t final_mask = 0;
 
 	for (uint8_t i = 0; i < MotorCount; i++) {
@@ -2197,15 +2315,27 @@ void P04Allocator::set_limits_from_allocation(const float demand[4], bool includ
 	//   - the thrusts really produce it.
 	// Anything else stays limited.  AC_PID::update_i() still lets a limited
 	// integrator shrink, so the unreachable side cannot wind up and can leave.
+	float feedback = achieved[3];
+
+	if (_yaw_auth.net) {
+		feedback = _yaw_auth.offset;
+
+		for (unsigned i = 0; i < MotorCount; i++) {
+			if (motor_enabled[i]) {
+				feedback += thrust[i] * (_yaw_geom[i] - _null_coef[_pair_of[i]]);
+			}
+		}
+	}
+
 	bool yaw_delivered = false;
 
 	if (!include_yaw && _fail_yaw_int != 0 &&
 	    _alloc_path == AllocPath::ACTIVE_SET && _yaw_auth.valid && _yaw_auth.exact &&
 	    !_yaw_auth.forward_clipped && !_yaw_auth.clipped_low && !_yaw_auth.clipped_high) {
-		yaw_delivered = !short_of(demand[3], achieved[3]) && isfinite(achieved[3]);
+		yaw_delivered = !short_of(demand[3], feedback) && isfinite(feedback);
 	}
 
-	_yaw_auth.achieved = achieved[3];
+	_yaw_auth.achieved = feedback;
 	_yaw_auth.integrator_released = yaw_delivered;
 	limit.yaw = include_yaw ? short_of(demand[3], achieved[3]) : !yaw_delivered;
 
@@ -2228,6 +2358,13 @@ void P04Allocator::set_column(unsigned i, float t, float r, float p, float y)
 	_roll_factor[i] = r;
 	_pitch_factor[i] = p;
 	_yaw_factor[i] = _yaw_geom[i] = y;
+}
+
+void P04Allocator::set_healthy_thrust(const float thrust[MotorCount])
+{
+	for (unsigned p = 0; p < 3; p++) {
+		_healthy_pair_sum[p] = thrust[p] + thrust[p + 3];
+	}
 }
 
 void P04Allocator::fail(unsigned i, float previous, uint32_t now_ms)
@@ -2254,10 +2391,13 @@ bool P04Allocator::allocate(const float request[4], float out[MotorCount], uint3
 	float d[4];
 	memcpy(d, request, sizeof(d));
 
+	_spdn_resid = 0.f;
+
 	if (_fail_spindown > 0.f) {
 		const float resid = _spdn_t0 * expf(-float(now_ms - _spdn_start_ms) * 0.001f / _fail_spindown);
 
 		if (resid > 0.01f) {
+			_spdn_resid = resid;
 			d[0] -= resid * _throttle_factor[_failed_motor] / 5.f;
 			d[1] -= resid * _roll_factor[_failed_motor];
 			d[2] -= resid * _pitch_factor[_failed_motor];
@@ -2419,7 +2559,7 @@ bool P04Allocator::predict(const float thrust[MotorCount], float dt, Prediction 
 	result = {};
 	result.trim = _predict_yaw / _predict_max;
 	const float csum = fabsf(_null_coef[0]) + fabsf(_null_coef[1]) + fabsf(_null_coef[2]);
-	result.from_model = !_null_stale && isfinite(csum) && csum >= 1e-6f;
+	result.from_model = _fail_yaw_null < 3 && !_vendor_vertices && !_null_stale && isfinite(csum) && csum >= 1e-6f;
 	float rem[3] {};
 
 	for (unsigned i = 0; i < MotorCount; i++) {

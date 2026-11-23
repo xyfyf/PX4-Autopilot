@@ -644,6 +644,28 @@ parameters:
             type: boolean
             default: 0
 
+        CA_P04_YALLOC:
+            description:
+                short: P04 degraded yaw allocation
+                long: Select the yaw objective for a known single motor failure on the E616F SIH frame.
+            type: enum
+            values:
+                0: Geometric yaw with balanced or automatic placement
+                1: Vendor geometric vertex blend
+                2: Identified net yaw
+                3: Identified net yaw with reserve and benefit guard
+            default: 0
+
+        CA_P04_ST:
+            description:
+                short: Last accepted P04 identification result
+            type: enum
+            values:
+                0: No accepted identification
+                1: Load-dependent yaw bias identified
+                2: Equivalent pair effects
+            default: 0
+
         CA_P04_NAUT:
             description:
                 short: Automatic load placement

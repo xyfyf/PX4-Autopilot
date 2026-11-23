@@ -26,6 +26,10 @@ public:
 	void fail(unsigned motor, float last_thrust, uint32_t now_ms);
 	bool allocate(const float request[4], float out[MotorCount], uint32_t now_ms, float dt, float yaw_rate, bool flying);
 	float _null_coef[3] {};
+	int _null_status{};
+	bool _vendor_vertices{};
+	void set_healthy_thrust(const float thrust[MotorCount]);
+
 	int _fail_null_auto{};
 	float _fail_null_max{0.75f}, _fail_spindown{}, _fail_null_shift{};
 	float _fail_yaw_suppress{0.169697f}, _fail_yaw_track{1.f}, _fail_relax{10.f};
@@ -53,6 +57,8 @@ public:
 		RELAXED         = 3,   // demand outside the reachable set - nearest point
 	};
 	struct YawAuthority {
+		bool net{};
+		float weight{}, offset{};
 		bool  valid;                // active set solved and the projection ran this cycle
 		bool  exact;                // the committed point realises the target itself, not the 20/80 blend
 		bool  forward_clipped;      // the request was already cut by the forward mixer's yaw_allowed
@@ -66,6 +72,7 @@ public:
 		float lo, hi;               // reachable interval at this cycle's thrust, roll and pitch
 	};
 
+	const YawAuthority &yaw_authority() const { return _yaw_auth; }
 	struct Limits { bool roll{}, pitch{}, yaw{}, throttle_lower{}, throttle_upper{}; } limit{};
 	struct Prediction {
 		float trim{}, balanced[MotorCount] {}, automatic[MotorCount] {};
@@ -85,6 +92,7 @@ public:
 private:
 	bool fail_predict_gaps(const float rem[3], const uint8_t idx[5], const int8_t pair_of[],
 			       float csum, float &balanced, float &automatic) const;
+	float _healthy_pair_sum[3] {}, _spdn_resid{};
 	float _predict_s{}, _predict_yaw{}, _predict_max{}, _predict_t[MotorCount] {};
 	bool _predicted{};
 	bool _null_stale{}, _ncheck_lp_init{};
@@ -117,12 +125,13 @@ private:
 				uint8_t n, float *lo, float *hi,
 				float t_lo[], float t_hi[], const float yaw_w[] = nullptr) const;
 	bool yaw_null_direction(const uint8_t idx[], uint8_t n,
-				float dir[MotorCount]) const;
+				float dir[MotorCount], const float yaw_w[] = nullptr) const;
 	static bool null_line_range(const float t[], const float dir[], uint8_t n,
 				    float &a_bal, float &amin, float &amax);
 	static void balance_load_on_null_line(float t[], const float dir[], uint8_t n, float shift);
 	float auto_null_shift(const float t[], const float dir[], const uint8_t idx[], uint8_t n,
 			      float target, bool yaw_clipped) const;
+	void apply_identified_yaw(const float demand[4], float thrust[]) const;
 	void apply_yaw_projection_core(const float demand[4],
 				       float thrust[MotorCount]) const;
 	bool projection_keeps_rows(const float rem[3], const uint8_t idx[], uint8_t n,
