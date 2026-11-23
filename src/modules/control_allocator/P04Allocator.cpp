@@ -1684,7 +1684,10 @@ bool P04Allocator::projection_keeps_rows(const float rem[3], const uint8_t idx[]
 // remains feasible if identification, reserve or the conservative gain check fails.
 void P04Allocator::apply_identified_yaw(const float demand[4], float thrust[]) const
 {
-	const bool guarded = _fail_yaw_null == 4;
+	const float previous_ramp = _net_ramp_s;
+	_net_ramp_s = -1.0f;  // Every early exit interrupts entry.
+	const bool v3 = _fail_yaw_null == 5;
+	const bool guarded = v3 || _fail_yaw_null == 4;
 
 	if ((!guarded && _fail_yaw_null != 3) || !_yaw_auth.exact || !_pair_map_valid ||
 	    _null_stale || _null_status != 1 || _failed_motor < 0) {
@@ -1773,12 +1776,56 @@ void P04Allocator::apply_identified_yaw(const float demand[4], float thrust[]) c
 			return;
 		}
 
+		if (v3) {
+			// Both factors of err(base)^2 - err(candidate)^2 must have the
+			// same sign over the coefficient box. Include trim and coasting
+			// in each affine output; neither cancels in the second factor.
+			float base_pair[3] {};
+			float candidate_yaw = offset;
+
+			for (uint8_t k = 0; k < n; k++) {
+				base_pair[_pair_of[idx[k]]] += thrust[idx[k]];
+				candidate_yaw += w[k] * candidate[k];
+			}
+
+			float delta_radius = 0.0f, sum_radius = 0.0f;
+
+			for (uint8_t p = 0; p < 3; p++) {
+				const float reference = _healthy_pair_sum[p] - (p == _pair_of[_failed_motor] ? _spdn_resid : 0.0f);
+				const float radius = 0.30f * fabsf(c[p]);
+				delta_radius += radius * fabsf(pair_change[p]);
+				sum_radius += radius * fabsf(2.0f * (base_pair[p] - reference) + pair_change[p]);
+			}
+
+			const float delta = candidate_yaw - base_yaw;
+			const float remaining = 2.0f * demand[3] - base_yaw - candidate_yaw;
+			// Guard the signs against single-precision rounding near an edge.
+			const float tol = 1.e-5f * (1.0f + fabsf(demand[3]) + fabsf(base_yaw) + fabsf(candidate_yaw) + magnitude);
+
+			if (!((delta > delta_radius + tol && remaining > sum_radius + tol) ||
+			      (delta < -delta_radius - tol && remaining < -sum_radius - tol))) {
+				return;
+			}
+
+			const uint32_t now = _now_ms;
+			const bool continuous = previous_ramp >= 0.0f && now - _net_last_ms <= 50U &&
+						_dt_s > 0.0f && _dt_s <= 0.05f;
+			_net_last_ms = now;
+			_net_ramp_s = continuous ? MIN(1.0f, previous_ramp + _dt_s) : 0.0f;
+			weight = MIN(weight, _net_ramp_s);
+
+			if (weight <= 0.0f) {
+				return;  // Keep the pre-existing geometric authority on the entry cycle.
+			}
+		}
+
 		for (uint8_t k = 0; k < n; k++) {
 			candidate[k] = thrust[idx[k]] + weight * (candidate[k] - thrust[idx[k]]);
 		}
 	}
 
 	if (!projection_keeps_rows(rem, idx, n, thrust, candidate)) {
+		_net_ramp_s = -1.0f;
 		return;
 	}
 
@@ -1802,7 +1849,14 @@ void P04Allocator::apply_yaw_projection(const float demand[4],
 {
 	const uint8_t solver_mask = _alloc_clamp_mask;
 	apply_yaw_projection_core(demand, thrust);
-	apply_identified_yaw(demand, thrust);
+
+	if (_fail_yaw_null >= 3 && _fail_yaw_null <= 5) {
+		apply_identified_yaw(demand, thrust);
+
+	} else if (_net_ramp_s >= 0.0f) {
+		_net_ramp_s = -1.0f;
+	}
+
 	uint8_t final_mask = 0;
 
 	for (uint8_t i = 0; i < MotorCount; i++) {
@@ -2369,6 +2423,7 @@ void P04Allocator::set_healthy_thrust(const float thrust[MotorCount])
 
 void P04Allocator::fail(unsigned i, float previous, uint32_t now_ms)
 {
+	_net_ramp_s = -1.0f;
 	_failed_motor = i;
 	motor_enabled[i] = false;
 	_spdn_start_ms = now_ms;
@@ -2404,7 +2459,11 @@ bool P04Allocator::allocate(const float request[4], float out[MotorCount], uint3
 		}
 	}
 
-	if (allocate_active_set(d, out)) {
+	const bool active_solution = allocate_active_set(d, out);
+
+	if (!active_solution || is_zero(_fail_yaw_track)) { _net_ramp_s = -1.0f; }
+
+	if (active_solution) {
 		_alloc_path = AllocPath::ACTIVE_SET;
 
 		if (!is_zero(_fail_yaw_track)) {apply_yaw_projection(d, out);}

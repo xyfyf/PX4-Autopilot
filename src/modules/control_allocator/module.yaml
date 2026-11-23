@@ -654,6 +654,7 @@ parameters:
                 1: Vendor geometric vertex blend
                 2: Identified net yaw
                 3: Identified net yaw with reserve and benefit guard
+                4: Net yaw with gradual entry and coefficient uncertainty guard
             default: 0
 
         CA_P04_ST:

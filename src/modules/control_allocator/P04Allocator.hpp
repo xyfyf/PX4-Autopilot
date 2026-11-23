@@ -93,6 +93,8 @@ private:
 	bool fail_predict_gaps(const float rem[3], const uint8_t idx[5], const int8_t pair_of[],
 			       float csum, float &balanced, float &automatic) const;
 	float _healthy_pair_sum[3] {}, _spdn_resid{};
+	mutable float _net_ramp_s = -1.0f;
+	mutable uint32_t _net_last_ms = 0;
 	float _predict_s{}, _predict_yaw{}, _predict_max{}, _predict_t[MotorCount] {};
 	bool _predicted{};
 	bool _null_stale{}, _ncheck_lp_init{};

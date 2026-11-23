@@ -1002,7 +1002,7 @@ bool ControlAllocator::configureP04(unsigned failed)
 
 	const int scheme = _param_p04_yalloc.get();
 	_p04._vendor_vertices = scheme == 1;
-	_p04._fail_yaw_null = scheme == 1 ? 0 : (scheme == 2 ? 3 : (scheme == 3 ? 4 : 1));
+	_p04._fail_yaw_null = scheme == 1 ? 0 : (scheme == 2 ? 3 : (scheme == 3 ? 4 : (scheme == 4 ? 5 : 1)));
 	_p04._null_status = _param_p04_st.get();
 
 	if (failed < 6) {
