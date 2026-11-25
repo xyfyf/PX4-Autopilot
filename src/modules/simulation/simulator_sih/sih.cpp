@@ -379,6 +379,9 @@ void Sih::configure_rotors()
 	_per_rotor = _sih_mc_expo.get() >= 0.f || _sih_t_tau_up.get() > 0.f || _sih_t_tau_dn.get() > 0.f
 		     || _sih_t_tau_stop.get() > 0.f || _sih_mc_rev_frac.get() < 1.f || fabsf(_sih_mc_rpm_max.get() - 10000.f) > 0.f;
 
+	const Vector3f cg{_sih_cg_x.get(), _sih_cg_y.get(), 0.f};
+	_per_rotor |= cg.norm_squared() > 0.f || _sih_rotor_j.get() > 0.f || _sih_kdw_yaw.get() >= 0.f;
+
 	// Positions in units of the stock roll/pitch arms; FRD body axes.
 	static constexpr float h = M_SQRT3_F / 2.f;
 	static constexpr float hex_x[] {h, 0.f, -h, -h, 0.f, h};
@@ -400,7 +403,7 @@ void Sih::configure_rotors()
 
 		const Vector3f arm_shape{hex ? hex_x[i] : quad_x[i], hex ? hex_y[i] : quad_y[i], 0.f};
 		const Vector3f position{_L_PITCH * arm_shape(0), _L_ROLL * arm_shape(1), 0.f};
-		_rotor_position[i] = position;
+		_rotor_position[i] = position - cg;
 		_rotor_axis[i] = Vector3f{0.f, 0.f, -1.f};
 
 		float tangential_deg = 0.f;
@@ -482,6 +485,7 @@ void Sih::read_rotors(const float dt)
 		const uint16_t bit = 1u << i;
 		const float target = (cut_mask & bit) ? 0.f : _rotor_target[i];
 		const bool coasting = ((cut_mask | _command_stop_mask) & bit) && fabsf(target) <= 0.f;
+		const float previous_speed = rotor_speed(_u[i]);
 		const bool speeding_up = fabsf(target) > fabsf(_u[i]) && target * _u[i] >= 0.f;
 		float tau = speeding_up ? _sih_t_tau_up.get() : _sih_t_tau_dn.get();
 
@@ -500,8 +504,7 @@ void Sih::read_rotors(const float dt)
 		if (expo >= 0.f) {
 			// Identified lags apply to RPM. Invert f(c) = (1-e)c + e*c^2
 			// to recover the drive variable used in the reaction torque.
-			const float speed = rotor_speed(_u[i]);
-			const float next = speed + alpha * (rotor_speed(target) - speed);
+			const float next = previous_speed + alpha * (rotor_speed(target) - previous_speed);
 			const float f = next * next;
 			const float b = 1.f - expo;
 			const float denominator = b + sqrtf(b * b + 4.f * expo * f);
@@ -510,6 +513,9 @@ void Sih::read_rotors(const float dt)
 		} else {
 			_u[i] += alpha * (target - _u[i]);
 		}
+
+		const float delta_omega = (rotor_speed(_u[i]) - previous_speed) * _sih_mc_rpm_max.get() * (2.f * M_PI_F / 60.f);
+		_rotor_accel_torque[i] = dt > 0.f ? _sih_rotor_j.get() * delta_omega / dt : 0.f;
 	}
 
 	if (fresh) {
@@ -624,7 +630,7 @@ void Sih::generate_rotor_wrench()
 		const float fraction = rotor_fraction(command) * (command < 0.f ? _sih_mc_rev_frac.get() : 1.f);
 		const float thrust = _T_MAX * _kt[i] * fraction;
 		const float q_curve = _sih_mc_expo.get() >= 0.f ? fabsf(command) : 1.f;
-		const float reaction = (ccw ? _Q_MAX : -_Q_MAX) * _kq[i] * fraction * q_curve;
+		const float reaction = (ccw ? 1.f : -1.f) * (_Q_MAX * _kq[i] * fraction * q_curve + _rotor_accel_torque[i]);
 		const float bias = hex ? _pair_arm[hex_pair[i]] * thrust : 0.f;
 		float reaction_z = reaction;
 
@@ -673,6 +679,10 @@ void Sih::generate_force_and_torques(const float dt)
 		generate_rotor_wrench();
 		_Fa_E = -_KDV * _R_N2E * _v_apparent_N;
 		_Ma_B = -_KDW * _w_B;
+
+		if (_sih_kdw_yaw.get() >= 0.f) {
+			_Ma_B(2) = -_sih_kdw_yaw.get() * _w_B(2);
+		}
 
 	} else if (_vehicle == VehicleType::Quadcopter) {
 

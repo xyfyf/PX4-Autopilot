@@ -208,6 +208,7 @@ private:
 	float _kq[MAX_ROTORS]{};
 	float _pair_arm[3]{};
 	float _rotor_target[MAX_ROTORS]{};
+	float _rotor_accel_torque[MAX_ROTORS]{};
 	uint16_t _command_stop_mask{0};
 	uint16_t _coasting_mask{0};
 	hrt_abstime _rotor_log_time{0};
@@ -352,6 +353,10 @@ private:
 		(ParamFloat<px4::params::SIH_Q_MAX>) _sih_q_max,
 		(ParamFloat<px4::params::SIH_L_ROLL>) _sih_l_roll,
 		(ParamFloat<px4::params::SIH_L_PITCH>) _sih_l_pitch,
+		(ParamFloat<px4::params::SIH_KDW_YAW>) _sih_kdw_yaw,
+		(ParamFloat<px4::params::SIH_ROTOR_J>) _sih_rotor_j,
+		(ParamFloat<px4::params::SIH_CG_X>) _sih_cg_x,
+		(ParamFloat<px4::params::SIH_CG_Y>) _sih_cg_y,
 		(ParamFloat<px4::params::SIH_KDV>) _sih_kdv,
 		(ParamFloat<px4::params::SIH_KDW>) _sih_kdw,
 		(ParamFloat<px4::params::SIH_LOC_LAT0>) _sih_lat0,

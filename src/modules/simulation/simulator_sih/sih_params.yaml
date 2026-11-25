@@ -2,6 +2,20 @@ module_name: simulator_sih
 parameters:
 - group: Simulation In Hardware
   definitions:
+    SIH_CG_X:
+      description:
+        short: Multirotor center of gravity offset forward from rotor origin
+      type: float
+      default: 0.0
+      unit: m
+      decimal: 3
+    SIH_CG_Y:
+      description:
+        short: Multirotor center of gravity offset right from rotor origin
+      type: float
+      default: 0.0
+      unit: m
+      decimal: 3
     SIH_MASS:
       description:
         short: Vehicle mass
@@ -297,6 +311,22 @@ parameters:
       default: 0.0
       unit: m
       num_instances: 3
+      decimal: 5
+    SIH_KDW_YAW:
+      description:
+        short: Multirotor yaw rate damping
+        long: Body Z rotational damping in Nm/(rad/s). Negative uses SIH_KDW.
+      type: float
+      default: -1.0
+      min: -1.0
+      decimal: 5
+    SIH_ROTOR_J:
+      description:
+        short: Rotor polar moment of inertia
+        long: Per-rotor inertia in kg m^2 for the reaction to angular acceleration.
+      type: float
+      default: 0.0
+      min: 0.0
       decimal: 5
     SIH_T_TAU_UP:
       description:
